@@ -48,3 +48,7 @@ The app checks the manifest after startup. A newer executable is downloaded to t
 State path:
 
 `%LOCALAPPDATA%\RinChan\OopzTacticalOverlay\state.bin`
+
+## License
+
+MIT © 2026 RinChan. See [`LICENSE`](LICENSE).
