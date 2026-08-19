@@ -8,6 +8,7 @@ from oopz_overlay.win32_input import (
     MOD_NOREPEAT,
     VK_RETURN,
     GlobalHotkeyRegistration,
+    GlobalWheelRegistration,
     HotkeySpec,
     _focus_window_native,
     parse_hotkey,
@@ -55,6 +56,23 @@ def test_global_hotkeys_are_registered_with_windows_and_can_be_reconfigured() ->
     assert user32.unregistered == [HOTKEY_ACTIVATE_ID, HOTKEY_VISIBILITY_ID]
     registration.close()
     assert user32.registered == {}
+
+
+def test_global_wheel_hook_only_consumes_vertical_wheel_while_enabled() -> None:
+    received: list[int] = []
+    registration = GlobalWheelRegistration(
+        lambda delta: received.append(delta),
+        user32=None,
+        kernel32=None,
+        install=False,
+    )
+
+    assert not registration.dispatch(0x020A, 120 << 16)
+    registration.set_enabled(True)
+    assert registration.dispatch(0x020A, 120 << 16)
+    assert registration.dispatch(0x020A, ((-120) & 0xFFFF) << 16)
+    assert not registration.dispatch(0x020E, 120 << 16)
+    assert received == [120, -120]
 
 
 def test_focus_window_reasserts_topmost_and_forces_one_retry() -> None:

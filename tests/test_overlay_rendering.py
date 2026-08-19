@@ -10,6 +10,7 @@ pytest.importorskip("PySide6")
 
 from PySide6.QtCore import QEvent, QPoint, QPointF, Qt
 from PySide6.QtGui import QKeyEvent, QPalette, QWheelEvent
+from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication
 
 from oopz_overlay.chat import ChatMessage
@@ -332,6 +333,9 @@ def test_activation_prepares_ime_and_wheel_scrolls_then_exit_returns_to_latest(
     scroll_bar = window.history.verticalScrollBar()
     assert prepared
     assert scroll_bar.value() == scroll_bar.maximum()
+    assert (
+        window.history.verticalScrollBarPolicy() is Qt.ScrollBarPolicy.ScrollBarAsNeeded
+    )
     QApplication.sendEvent(
         window.input,
         QWheelEvent(
@@ -345,12 +349,22 @@ def test_activation_prepares_ime_and_wheel_scrolls_then_exit_returns_to_latest(
             False,
         ),
     )
-    app.processEvents()
+    QTest.qWait(180)
+    assert scroll_bar.value() < scroll_bar.maximum()
+
+    scroll_bar.setValue(scroll_bar.maximum())
+    assert window.handle_global_wheel(120)
+    QTest.qWait(180)
     assert scroll_bar.value() < scroll_bar.maximum()
 
     window.hide_overlay()
     app.processEvents()
+    assert not window.handle_global_wheel(120)
     assert scroll_bar.value() == scroll_bar.maximum()
+    assert (
+        window.history.verticalScrollBarPolicy()
+        is Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+    )
 
     window.configure(AppSettings(always_visible=False))
     window.hide()

@@ -28,6 +28,8 @@ GWL_EXSTYLE = -20
 WS_EX_TRANSPARENT = 0x00000020
 WS_EX_NOACTIVATE = 0x08000000
 WM_HOTKEY = 0x0312
+WM_MOUSEWHEEL = 0x020A
+WH_MOUSE_LL = 14
 HOTKEY_ACTIVATE_ID = 0xB001
 HOTKEY_VISIBILITY_ID = 0xB002
 MOD_ALT = 0x0001
@@ -52,6 +54,18 @@ _MODIFIER_KEYS = {
     "win": VK_LWIN,
     "meta": VK_LWIN,
 }
+
+
+class MouseLowLevelHookData(ctypes.Structure):
+    _fields_ = [
+        ("pt", wintypes.POINT),
+        ("mouseData", wintypes.DWORD),
+        ("flags", wintypes.DWORD),
+        ("time", wintypes.DWORD),
+        ("dwExtraInfo", ctypes.c_size_t),
+    ]
+
+
 _NAMED_KEYS = {
     "enter": VK_RETURN,
     "return": VK_RETURN,
@@ -217,6 +231,98 @@ def _modifier_flags(spec: HotkeySpec) -> int:
     if spec.win:
         flags |= MOD_WIN
     return flags
+
+
+class GlobalWheelRegistration:
+    """Capture vertical wheel input globally while the HUD input is active."""
+
+    def __init__(
+        self,
+        callback,
+        *,
+        user32=None,
+        kernel32=None,
+        install: bool = True,
+    ) -> None:
+        if install and os.name != "nt" and user32 is None:
+            raise OSError("Global wheel capture is only available on Windows")
+        self._callback = callback
+        self._enabled = False
+        self._user32 = user32 or (ctypes.windll.user32 if os.name == "nt" else None)
+        self._kernel32 = kernel32 or (
+            ctypes.windll.kernel32 if os.name == "nt" else None
+        )
+        self._hook = 0
+        callback_factory = getattr(ctypes, "WINFUNCTYPE", ctypes.CFUNCTYPE)
+        self._procedure_type = callback_factory(
+            ctypes.c_ssize_t,
+            ctypes.c_int,
+            wintypes.WPARAM,
+            wintypes.LPARAM,
+        )
+        self._procedure = self._procedure_type(self._hook_procedure)
+        if install:
+            self._install()
+
+    def _install(self) -> None:
+        if self._user32 is None or self._kernel32 is None:
+            raise OSError("Global wheel capture is unavailable")
+        set_hook = self._user32.SetWindowsHookExW
+        set_hook.argtypes = [
+            ctypes.c_int,
+            self._procedure_type,
+            wintypes.HINSTANCE,
+            wintypes.DWORD,
+        ]
+        set_hook.restype = wintypes.HHOOK
+        call_next = self._user32.CallNextHookEx
+        call_next.argtypes = [
+            wintypes.HHOOK,
+            ctypes.c_int,
+            wintypes.WPARAM,
+            wintypes.LPARAM,
+        ]
+        call_next.restype = ctypes.c_ssize_t
+        unhook = self._user32.UnhookWindowsHookEx
+        unhook.argtypes = [wintypes.HHOOK]
+        unhook.restype = wintypes.BOOL
+        get_module = self._kernel32.GetModuleHandleW
+        get_module.argtypes = [wintypes.LPCWSTR]
+        get_module.restype = wintypes.HINSTANCE
+        module = get_module(None)
+        self._hook = int(set_hook(WH_MOUSE_LL, self._procedure, module, 0) or 0)
+        if not self._hook:
+            raise OSError(int(self._kernel32.GetLastError()), "无法监听滚轮")
+
+    def set_enabled(self, enabled: bool) -> None:
+        self._enabled = enabled
+
+    def dispatch(self, message: int, mouse_data: int) -> bool:
+        if not self._enabled or message != WM_MOUSEWHEEL:
+            return False
+        delta = ctypes.c_short((mouse_data >> 16) & 0xFFFF).value
+        if not delta:
+            return False
+        self._callback(delta)
+        return True
+
+    def _hook_procedure(self, code: int, message: int, pointer: int) -> int:
+        if code >= 0 and message == WM_MOUSEWHEEL:
+            value = ctypes.cast(
+                pointer,
+                ctypes.POINTER(MouseLowLevelHookData),
+            ).contents
+            if self.dispatch(message, int(value.mouseData)):
+                return 1
+        if self._user32 is None:
+            return 0
+        return int(self._user32.CallNextHookEx(self._hook, code, message, pointer))
+
+    def close(self) -> None:
+        self._enabled = False
+        if self._hook and self._user32 is not None:
+            self._user32.UnhookWindowsHookEx(self._hook)
+            self._hook = 0
 
 
 class GlobalHotkeyRegistration:

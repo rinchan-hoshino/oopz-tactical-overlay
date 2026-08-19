@@ -31,7 +31,7 @@ from .updater import (
     start_pending_update,
 )
 from .widgets import FONT_FAMILY, OverlayWindow, SetupDialog
-from .win32_input import GlobalHotkeyRegistration
+from .win32_input import GlobalHotkeyRegistration, GlobalWheelRegistration
 
 
 class Bridge(QObject):
@@ -71,6 +71,15 @@ class AppController(QObject):
             )
         except OSError as exc:
             self._hotkey_startup_error = str(exc)
+        self.wheel: GlobalWheelRegistration | None = None
+        try:
+            self.wheel = GlobalWheelRegistration(self.overlay.handle_global_wheel)
+            self.overlay.interaction_changed.connect(self.wheel.set_enabled)
+        except OSError as exc:
+            detail = str(exc)
+            self._hotkey_startup_error = "；".join(
+                part for part in (self._hotkey_startup_error, detail) if part
+            )
         self.gateway = GatewayRuntime(
             GatewayCallbacks(
                 timeline=self.bridge.timeline.emit,
@@ -365,6 +374,8 @@ class AppController(QObject):
             return
         self._shutting_down = True
         self.hotkeys.close()
+        if self.wheel is not None:
+            self.wheel.close()
         self.overlay.hide()
         self.tray.hide()
         self.gateway.close()

@@ -7,9 +7,12 @@ from dataclasses import replace
 from datetime import UTC, datetime
 
 from PySide6.QtCore import (
+    QAbstractAnimation,
+    QEasingCurve,
     QEvent,
     QPoint,
     QPointF,
+    QPropertyAnimation,
     QRectF,
     QSize,
     Qt,
@@ -724,6 +727,7 @@ class OverlayWindow(QWidget):
     visibility_hotkey_pressed = Signal()
     edit_committed = Signal(float, float, int, int)
     edit_cancelled = Signal()
+    interaction_changed = Signal(bool)
 
     def __init__(self) -> None:
         super().__init__(
@@ -775,7 +779,16 @@ class OverlayWindow(QWidget):
         self.history.setStyleSheet(
             "QListWidget { background: transparent; border: none; outline: none; }"
             "QListWidget::item { background: transparent; border: none; }"
+            "QScrollBar:vertical { background: transparent; width: 6px; margin: 0; }"
+            "QScrollBar::handle:vertical { background: rgba(226,195,111,190); border-radius: 3px; min-height: 22px; }"
+            "QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; }"
+            "QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical { background: transparent; }"
         )
+        scroll_bar = self.history.verticalScrollBar()
+        self._scroll_target = 0
+        self._scroll_animation = QPropertyAnimation(scroll_bar, b"value", self)
+        self._scroll_animation.setDuration(130)
+        self._scroll_animation.setEasingCurve(QEasingCurve.Type.OutCubic)
         root.addWidget(self.history, 1)
 
         self.input = OutlinedLineEdit()
@@ -862,10 +875,14 @@ class OverlayWindow(QWidget):
 
     def clear_messages(self) -> None:
         self.timeline = ChatTimeline(limit=80)
+        self._stop_scroll_animation()
         self.history.clear()
+        self._scroll_target = 0
 
     def _render_timeline(self, *, force_latest: bool = False) -> None:
         scroll_bar = self.history.verticalScrollBar()
+        if hasattr(self, "_scroll_animation"):
+            self._scroll_animation.stop()
         was_latest = scroll_bar.value() >= scroll_bar.maximum() - 2
         previous_scroll = scroll_bar.value()
         self.history.clear()
@@ -883,12 +900,18 @@ class OverlayWindow(QWidget):
             self.history.addItem(item)
             self.history.setItemWidget(item, row)
         if force_latest or not self._active or was_latest:
-            self.history.scrollToBottom()
-            QTimer.singleShot(0, self.history.scrollToBottom)
+
+            def follow_latest() -> None:
+                self.history.scrollToBottom()
+                self._scroll_target = scroll_bar.maximum()
+
+            follow_latest()
+            QTimer.singleShot(0, follow_latest)
         else:
 
             def restore_scroll() -> None:
                 scroll_bar.setValue(min(previous_scroll, scroll_bar.maximum()))
+                self._scroll_target = scroll_bar.value()
 
             restore_scroll()
             QTimer.singleShot(0, restore_scroll)
@@ -915,6 +938,47 @@ class OverlayWindow(QWidget):
     def _restore_topmost(self) -> None:
         if self.isVisible():
             ensure_window_topmost(int(self.winId()))
+
+    def _set_scroll_position_visible(self, visible: bool) -> None:
+        policy = (
+            Qt.ScrollBarPolicy.ScrollBarAsNeeded
+            if visible
+            else Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+        )
+        self.history.setVerticalScrollBarPolicy(policy)
+
+    def _stop_scroll_animation(self) -> None:
+        self._scroll_animation.stop()
+        self._scroll_target = self.history.verticalScrollBar().value()
+
+    def _scroll_by_wheel_delta(self, delta: int) -> None:
+        if not delta:
+            return
+        scroll_bar = self.history.verticalScrollBar()
+        base = (
+            self._scroll_target
+            if self._scroll_animation.state() == QAbstractAnimation.State.Running
+            else scroll_bar.value()
+        )
+        notch = max(32, min(72, round(self.history.viewport().height() * 0.22)))
+        distance = round((delta / 120) * notch)
+        if not distance:
+            distance = 1 if delta > 0 else -1
+        target = max(scroll_bar.minimum(), min(scroll_bar.maximum(), base - distance))
+        self._scroll_target = target
+        self._scroll_animation.stop()
+        self._scroll_animation.setStartValue(scroll_bar.value())
+        self._scroll_animation.setEndValue(target)
+        self._scroll_animation.setDuration(
+            max(90, min(180, 90 + abs(target - scroll_bar.value())))
+        )
+        self._scroll_animation.start()
+
+    def handle_global_wheel(self, delta: int) -> bool:
+        if not self._active or self._editing:
+            return False
+        self._scroll_by_wheel_delta(delta)
+        return True
 
     def _set_interactive(self, interactive: bool) -> None:
         self.setAttribute(
@@ -949,10 +1013,15 @@ class OverlayWindow(QWidget):
             or self._user_hidden
         ):
             self._active = False
+            self._set_scroll_position_visible(False)
+            self.interaction_changed.emit(False)
             self.hide()
             return
         self._active = False
         self._editing = False
+        self._stop_scroll_animation()
+        self._set_scroll_position_visible(False)
+        self.interaction_changed.emit(False)
         self.editor.hide()
         self.resize_grip.hide()
         self.status.hide()
@@ -979,6 +1048,8 @@ class OverlayWindow(QWidget):
         self.input.setPlaceholderText("")
         self.status.setVisible(not self._connected)
         self._place_window()
+        self._stop_scroll_animation()
+        self._set_scroll_position_visible(True)
         self._render_timeline(force_latest=True)
         self.resize_grip.hide()
         self.input.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
@@ -987,6 +1058,7 @@ class OverlayWindow(QWidget):
         self._set_interactive(True)
         self._restore_topmost()
         self._focus_input()
+        self.interaction_changed.emit(True)
         QTimer.singleShot(80, self._focus_input)
         QTimer.singleShot(160, self._finish_activation)
 
@@ -1005,6 +1077,9 @@ class OverlayWindow(QWidget):
     def begin_edit_mode(self) -> None:
         self._active = False
         self._editing = True
+        self._stop_scroll_animation()
+        self._set_scroll_position_visible(False)
+        self.interaction_changed.emit(False)
         self._edit_original = self.geometry()
         self._place_window()
         self.editor.show()
@@ -1062,6 +1137,9 @@ class OverlayWindow(QWidget):
     def hide_overlay(self) -> None:
         self._active = False
         self._activation_guard = False
+        self._stop_scroll_animation()
+        self._set_scroll_position_visible(False)
+        self.interaction_changed.emit(False)
         self.input.clearFocus()
         self.input.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.input.setReadOnly(True)
@@ -1078,6 +1156,9 @@ class OverlayWindow(QWidget):
         if self._user_hidden:
             self._active = False
             self._activation_guard = False
+            self._stop_scroll_animation()
+            self._set_scroll_position_visible(False)
+            self.interaction_changed.emit(False)
             self.input.clear()
             self.input.clearFocus()
             self.hide()
@@ -1137,9 +1218,7 @@ class OverlayWindow(QWidget):
         ):
             delta = event.angleDelta().y()
             if delta:
-                scroll_bar = self.history.verticalScrollBar()
-                step = max(40, scroll_bar.pageStep() // 3)
-                scroll_bar.setValue(scroll_bar.value() - (step if delta > 0 else -step))
+                self._scroll_by_wheel_delta(delta)
                 event.accept()
                 return True
         return super().eventFilter(watched, event)
