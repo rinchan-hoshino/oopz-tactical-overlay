@@ -41,7 +41,7 @@ if __name__ == "__main__":
     one_shot_modes = {
         "--smoke-test",
         "--render-preview",
-        "--automation-import-probe",
+        "--sdk-import-probe",
     }
     if one_shot_modes.intersection(sys.argv):
         os._exit(exit_code)

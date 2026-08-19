@@ -19,7 +19,8 @@ from PySide6.QtWidgets import (
 from . import __version__
 from .chat import ChatMessage
 from .dpapi import WindowsDpapiProtector
-from .gateway import GatewayCallbacks, GatewayRuntime
+from .gateway import GatewayCallbacks, GatewayRuntime, LoginResult
+from .local_session import LocalSessionError, load_oopz_local_session
 from .settings import AppSettings, JsonSettingsStore
 from .updater import (
     UpdateProgress,
@@ -37,7 +38,7 @@ class Bridge(QObject):
     timeline = Signal(object)
     status = Signal(str, bool)
     error = Signal(str)
-    channel_changed = Signal(str)
+    login_result = Signal(object)
     update_ready = Signal(str)
     update_progress = Signal(object)
 
@@ -50,6 +51,7 @@ class AppController(QObject):
         self.bridge = Bridge()
         self.overlay = OverlayWindow()
         self.setup_dialog: SetupDialog | None = None
+        self._shutting_down = False
         self.state_root = self._state_root()
         self.store = JsonSettingsStore(
             self.state_root / "state.bin", WindowsDpapiProtector()
@@ -58,7 +60,7 @@ class AppController(QObject):
             self.settings = self.store.load()
         except (OSError, ValueError, UnicodeError):
             self.settings = AppSettings()
-        self.current_channel = ""
+        self._connected_key = ("", "", "")
         self.overlay.configure(self.settings)
         self.hotkeys = GlobalHotkeyRegistration(int(self.overlay.winId()))
         self._hotkey_startup_error = ""
@@ -74,14 +76,13 @@ class AppController(QObject):
                 timeline=self.bridge.timeline.emit,
                 status=self.bridge.status.emit,
                 error=self.bridge.error.emit,
-                channel=self.bridge.channel_changed.emit,
             )
         )
 
         self.bridge.timeline.connect(self.overlay.merge_messages)
         self.bridge.status.connect(self.overlay.set_connection_status)
         self.bridge.error.connect(self._on_error)
-        self.bridge.channel_changed.connect(self._channel_changed)
+        self.bridge.login_result.connect(self._on_login_result)
         self.bridge.update_ready.connect(self._on_update_ready)
         self.bridge.update_progress.connect(self._on_update_progress)
         self.overlay.send_requested.connect(self.gateway.send)
@@ -106,7 +107,10 @@ class AppController(QObject):
             QTimer.singleShot(0, self._show_hotkey_startup_error)
         QTimer.singleShot(1800, self._check_update)
 
-        QTimer.singleShot(80, self._connect_current)
+        if self.settings.area_id and self.settings.channel_id:
+            QTimer.singleShot(80, self._import_session)
+        else:
+            QTimer.singleShot(0, self.open_settings)
 
     @staticmethod
     def _state_root() -> Path:
@@ -151,9 +155,19 @@ class AppController(QObject):
             self.setup_dialog.show_error(self._hotkey_startup_error)
 
     def _connect_current(self) -> None:
+        if not self.settings.is_ready:
+            return
         self.overlay.clear_messages()
-        self.overlay.set_connection_status("正在连接 Oopz…", False)
-        self.gateway.connect()
+        self.overlay.set_connection_status(
+            f"正在连接 #{self.settings.channel_name}…",
+            False,
+        )
+        self._connected_key = (
+            self.settings.person_uid,
+            self.settings.area_id,
+            self.settings.channel_id,
+        )
+        self.gateway.connect(self.settings)
 
     def open_settings(self) -> None:
         if self.overlay.is_active:
@@ -163,18 +177,70 @@ class AppController(QObject):
             self.setup_dialog.activateWindow()
             return
         dialog = SetupDialog(self.settings)
+        dialog.session_requested.connect(self._import_session)
         dialog.settings_changed.connect(self._configured)
         dialog.edit_requested.connect(self._begin_edit)
         dialog.finished.connect(self._setup_finished)
         self.setup_dialog = dialog
         dialog.set_update_status(self._update_status)
-        dialog.set_current_channel(
-            self.current_channel,
-            connected=bool(self.current_channel),
-        )
         dialog.show()
         dialog.raise_()
         dialog.activateWindow()
+        QTimer.singleShot(0, self._import_session)
+
+    def _import_session(self) -> None:
+        if self._shutting_down:
+            return
+        try:
+            session = load_oopz_local_session()
+        except LocalSessionError as exc:
+            if self.setup_dialog is not None:
+                self.setup_dialog.show_error(str(exc))
+            else:
+                self._on_error(str(exc))
+            return
+        current = replace(
+            self.settings,
+            device_id=session.device_id,
+            person_uid=session.person_uid,
+            jwt_token=session.jwt_token,
+            app_version=session.app_version,
+        )
+        self.gateway.inspect_session(
+            current,
+            success=self.bridge.login_result.emit,
+        )
+
+    def _on_login_result(self, result: LoginResult) -> None:
+        if self.setup_dialog is not None and self.setup_dialog.isVisible():
+            self.setup_dialog.apply_login_result(result)
+            return
+        if not result.settings.channel_id:
+            self.open_settings()
+            if self.setup_dialog is not None:
+                self.setup_dialog.apply_login_result(result)
+            return
+        selected = next(
+            (
+                item
+                for item in result.destinations
+                if item.channel_id == result.settings.channel_id
+            ),
+            None,
+        )
+        if selected is None:
+            self.open_settings()
+            if self.setup_dialog is not None:
+                self.setup_dialog.apply_login_result(result)
+            return
+        settings = replace(
+            result.settings,
+            area_id=selected.area_id,
+            area_name=selected.area_name,
+            channel_id=selected.channel_id,
+            channel_name=selected.channel_name,
+        )
+        self._configured(settings)
 
     def _configured(self, settings: AppSettings) -> None:
         try:
@@ -183,22 +249,20 @@ class AppController(QObject):
             if self.setup_dialog is not None:
                 self.setup_dialog.show_error(str(exc))
             return
+        next_connection = (
+            settings.person_uid,
+            settings.area_id,
+            settings.channel_id,
+        )
         self.settings = settings
         self.store.save(settings)
         self.overlay.configure(settings)
-
-    def _channel_changed(self, channel_name: str) -> None:
-        if channel_name == self.current_channel:
-            return
-        self.current_channel = channel_name
-        self.overlay.clear_messages()
-        if channel_name:
-            self.overlay.set_connection_status(f"#{channel_name}", True)
-        if self.setup_dialog is not None:
-            self.setup_dialog.set_current_channel(
-                channel_name,
-                connected=bool(channel_name),
-            )
+        if settings.is_ready and next_connection != self._connected_key:
+            self._connect_current()
+        elif not settings.is_ready:
+            self._connected_key = ("", "", "")
+            self.gateway.disconnect()
+            self.overlay.set_connection_status("请选择 Oopz 文字频道", False)
 
     def _begin_edit(self) -> None:
         self.overlay.begin_edit_mode()
@@ -297,6 +361,9 @@ class AppController(QObject):
         )
 
     def shutdown(self) -> None:
+        if self._shutting_down:
+            return
+        self._shutting_down = True
         self.hotkeys.close()
         self.overlay.hide()
         self.tray.hide()
@@ -397,9 +464,10 @@ def _close_onefile_splash() -> None:
         splash_feedback.unlink(missing_ok=True)
 
 
-def _automation_import_probe() -> int:
-    importlib.import_module("comtypes.stream")
-    importlib.import_module("uiautomation")
+def _sdk_import_probe() -> int:
+    importlib.import_module("oopz_sdk")
+    importlib.import_module("oopz_sdk.client.rest")
+    importlib.import_module("oopz_sdk.client.ws")
     return 0
 
 
@@ -414,9 +482,9 @@ def main() -> int:
         index = arguments.index("--cleanup-updater")
         if index + 1 < len(arguments):
             cleanup_updater_later(Path(arguments[index + 1]))
-    if "--automation-import-probe" in arguments:
+    if "--sdk-import-probe" in arguments:
         _close_onefile_splash()
-        return _automation_import_probe()
+        return _sdk_import_probe()
     state_root = AppController._state_root()
     if start_pending_update(state_root, __version__):
         return 0

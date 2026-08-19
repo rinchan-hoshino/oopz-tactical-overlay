@@ -15,6 +15,13 @@ def test_settings_store_contains_no_oopz_credentials(tmp_path) -> None:
     path = tmp_path / "state.bin"
     store = JsonSettingsStore(path, ReversingProtector())
     settings = AppSettings(
+        device_id="device",
+        person_uid="person",
+        jwt_token="token",
+        area_id="area",
+        area_name="猫尾服务器",
+        channel_id="channel",
+        channel_name="综合文字",
         hotkey="Ctrl+Enter",
         position_x=0.74,
         position_y=0.66,
@@ -34,7 +41,12 @@ def test_settings_store_contains_no_oopz_credentials(tmp_path) -> None:
     assert "jwt_token" not in plaintext
     assert "target_process" not in plaintext
     assert "target_process_id" not in plaintext
-    assert store.load() == settings
+    assert plaintext["area_id"] == "area"
+    assert plaintext["channel_id"] == "channel"
+    loaded = store.load()
+    assert loaded.area_id == "area"
+    assert loaded.channel_id == "channel"
+    assert not loaded.has_credentials
 
 
 def test_legacy_settings_ignore_removed_process_and_numeric_position(tmp_path) -> None:
@@ -56,11 +68,11 @@ def test_legacy_settings_ignore_removed_process_and_numeric_position(tmp_path) -
 
     loaded = JsonSettingsStore(path, ReversingProtector()).load()
 
-    assert loaded.schema_version == 7
+    assert loaded.schema_version == 8
     assert not hasattr(loaded, "target_process")
-    assert not hasattr(loaded, "jwt_token")
-    assert not hasattr(loaded, "area_id")
-    assert not hasattr(loaded, "channel_id")
+    assert loaded.jwt_token == ""
+    assert loaded.area_id == "removed"
+    assert loaded.channel_id == "removed"
     assert loaded.hotkey == "F8"
     assert loaded.position_x == 0.5
     assert loaded.position_y == 0.82
@@ -75,7 +87,7 @@ def test_existing_hotkey_is_preserved_while_new_default_is_f8(tmp_path) -> None:
 
     loaded = JsonSettingsStore(path, ReversingProtector()).load()
 
-    assert loaded.schema_version == 7
+    assert loaded.schema_version == 8
     assert loaded.hotkey == "Enter"
     assert loaded.visibility_hotkey == "F9"
     assert loaded.font_size == 12

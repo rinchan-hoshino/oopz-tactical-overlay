@@ -47,9 +47,7 @@ def main() -> None:
             f"--file-version={windows_version}",
             f"--product-version={windows_version}",
             "--copyright=Copyright 2026 RinChan",
-            "--include-package=uiautomation",
-            "--include-package=comtypes",
-            "--nofollow-import-to=comtypes.test",
+            "--include-package=oopz_sdk",
             "--include-package-data=certifi",
             f"--report={build / 'compilation-report.xml'}",
             str(ROOT / "tools" / "windows_entry.py"),
@@ -63,7 +61,7 @@ def main() -> None:
     target = release / f"{PRODUCT}.exe"
     shutil.copy2(built, target)
     subprocess.run(
-        [target, "--automation-import-probe"],
+        [target, "--sdk-import-probe"],
         cwd=ROOT,
         check=True,
         timeout=120,

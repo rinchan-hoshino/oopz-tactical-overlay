@@ -40,20 +40,32 @@ def test_app_controller_constructs_with_owned_state_root(tmp_path, monkeypatch) 
     app.processEvents()
 
 
-def test_oopz_channel_change_clears_old_timeline_without_local_selection(
+def test_manual_channel_change_clears_timeline_and_reconnects(
     tmp_path, monkeypatch
 ) -> None:
     monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
     app = QApplication.instance() or QApplication([])
     controller = AppController(app)
+    connected: list[AppSettings] = []
+    monkeypatch.setattr(controller.gateway, "connect", connected.append)
+    monkeypatch.setattr(controller.hotkeys, "configure", lambda *_args: None)
     controller.overlay.merge_messages(
         [ChatMessage("old", 1, "u", "风屿", "旧频道消息", False)]
     )
+    settings = AppSettings(
+        device_id="device",
+        person_uid="person",
+        jwt_token="token",
+        area_id="area",
+        area_name="猫尾服务器",
+        channel_id="strategy",
+        channel_name="攻略",
+    )
 
-    controller._channel_changed("新频道")
+    controller._configured(settings)
 
     assert controller.overlay.timeline.items == ()
-    assert controller.current_channel == "新频道"
+    assert connected == [settings]
     controller.shutdown()
     app.processEvents()
 

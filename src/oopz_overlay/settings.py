@@ -2,14 +2,22 @@ from __future__ import annotations
 
 import json
 import os
-from dataclasses import asdict, dataclass, fields
+from dataclasses import asdict, dataclass, field, fields
 from pathlib import Path
 from typing import Protocol
 
 
 @dataclass(frozen=True, slots=True)
 class AppSettings:
-    schema_version: int = 7
+    schema_version: int = 8
+    device_id: str = field(default="", metadata={"persist": False})
+    person_uid: str = field(default="", metadata={"persist": False})
+    jwt_token: str = field(default="", metadata={"persist": False})
+    app_version: str = field(default="69514", metadata={"persist": False})
+    area_id: str = ""
+    area_name: str = ""
+    channel_id: str = ""
+    channel_name: str = ""
     hotkey: str = "F8"
     visibility_hotkey: str = "F9"
     position_x: float = 0.5
@@ -23,9 +31,11 @@ class AppSettings:
 
     @classmethod
     def from_dict(cls, raw: dict[str, object]) -> AppSettings:
-        known = {item.name for item in fields(cls)}
+        known = {
+            item.name for item in fields(cls) if item.metadata.get("persist", True)
+        }
         data = {key: value for key, value in raw.items() if key in known}
-        data["schema_version"] = 7
+        data["schema_version"] = 8
         if "position_x" not in data:
             data["position_x"] = 0.5
         if "position_y" not in data:
@@ -43,8 +53,20 @@ class AppSettings:
         )
         return cls(**data)
 
+    @property
+    def has_credentials(self) -> bool:
+        return all((self.device_id, self.person_uid, self.jwt_token))
+
+    @property
+    def is_ready(self) -> bool:
+        return self.has_credentials and bool(self.area_id and self.channel_id)
+
     def to_dict(self) -> dict[str, object]:
-        return asdict(self)
+        payload = asdict(self)
+        for item in fields(self):
+            if not item.metadata.get("persist", True):
+                payload.pop(item.name, None)
+        return payload
 
 
 class SecretProtector(Protocol):

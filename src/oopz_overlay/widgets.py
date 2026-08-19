@@ -31,6 +31,7 @@ from PySide6.QtGui import (
 )
 from PySide6.QtWidgets import (
     QCheckBox,
+    QComboBox,
     QDialog,
     QFrame,
     QHBoxLayout,
@@ -48,6 +49,7 @@ from PySide6.QtWidgets import (
 
 from . import __version__
 from .chat import ChatMessage, ChatTimeline
+from .gateway import Destination, LoginResult
 from .intent import OverlayAction, OverlayIntent
 from .settings import AppSettings
 from .win32_input import (
@@ -187,6 +189,7 @@ class HotkeyRecorder(QPushButton):
 
 
 class SetupDialog(QDialog):
+    session_requested = Signal()
     settings_changed = Signal(object)
     edit_requested = Signal()
 
@@ -207,11 +210,16 @@ class SetupDialog(QDialog):
             QLabel#section {{ color: {TEXT}; font: 700 11px "{FONT_FAMILY}"; }}
             QLabel#value {{ color: {ACCENT_HOT}; font-weight: 600; }}
             QFrame#card {{ background: {SURFACE_2}; border: 1px solid {BORDER}; border-radius: 10px; }}
-            QSpinBox, QPushButton {{
+            QSpinBox, QComboBox, QPushButton {{
                 background: #34363c; color: {TEXT}; border: 1px solid #4a4d54;
                 border-radius: 7px; padding: 7px 10px; min-height: 22px;
             }}
-            QSpinBox:hover, QPushButton:hover {{ border-color: #6b707a; }}
+            QComboBox::drop-down {{ border: 0; width: 28px; }}
+            QComboBox QAbstractItemView {{
+                background: {SURFACE_2}; color: {TEXT}; border: 1px solid {BORDER};
+                selection-background-color: #3b4f73;
+            }}
+            QSpinBox:hover, QComboBox:hover, QPushButton:hover {{ border-color: #6b707a; }}
             QPushButton:pressed {{ background: #41444b; }}
             QPushButton#primary {{ background: #2563eb; border-color: #3b82f6; color: white; font-weight: 600; }}
             QPushButton#primary:hover {{ background: #2f6ff0; }}
@@ -245,11 +253,15 @@ class SetupDialog(QDialog):
         self.update_status.setObjectName("updateStatus")
         root.addWidget(self.update_status)
 
-        connection_card, connection = self._card("Oopz 当前频道")
-        self.current_channel = QLabel("等待 Oopz")
-        self.current_channel.setObjectName("value")
-        connection.addWidget(self.current_channel)
-        self.state = QLabel("在 Oopz 中切换频道，HUD 会自动跟随")
+        connection_card, connection = self._card("Oopz 频道")
+        self.server = QLabel("正在读取 Oopz 登录态")
+        self.server.setObjectName("value")
+        connection.addWidget(self.server)
+        self.destination = QComboBox()
+        connection.addWidget(self.destination)
+        self.sync_button = QPushButton("重新读取服务器和频道")
+        connection.addWidget(self.sync_button)
+        self.state = QLabel("选择 HUD 要读写的文字频道")
         self.state.setObjectName("hint")
         connection.addWidget(self.state)
         root.addWidget(connection_card)
@@ -304,6 +316,8 @@ class SetupDialog(QDialog):
         root.addStretch(1)
 
         self.edit_button.clicked.connect(self._request_edit)
+        self.sync_button.clicked.connect(self._read_session)
+        self.destination.currentIndexChanged.connect(self._emit_current)
         self.activation_hotkey.hotkey_changed.connect(self._emit_current)
         self.visibility_hotkey.hotkey_changed.connect(self._emit_current)
         self.font_size.valueChanged.connect(self._emit_current)
@@ -311,6 +325,7 @@ class SetupDialog(QDialog):
         self.backdrop_opacity.valueChanged.connect(self._backdrop_opacity_changed)
         self.always_visible.toggled.connect(self._emit_current)
 
+        self._populate_current_destination(current)
         self._updating = False
 
     @staticmethod
@@ -344,18 +359,51 @@ class SetupDialog(QDialog):
         row.addWidget(value)
         return row
 
-    def set_current_channel(self, channel_name: str, *, connected: bool) -> None:
-        self.current_channel.setText(
-            f"#{channel_name}" if connected and channel_name else "等待 Oopz"
-        )
-        self.state.setText(
-            "在 Oopz 中切换频道，HUD 会自动跟随"
-            if connected
-            else "请打开 Oopz 并进入文字频道"
-        )
+    def _populate_current_destination(self, current: AppSettings) -> None:
+        self.destination.clear()
+        if current.area_id:
+            self.server.setText(current.area_name or "上次选择的服务器")
+        if current.area_id and current.channel_id:
+            destination = Destination(
+                current.area_id,
+                current.area_name or "当前服务器",
+                current.channel_id,
+                current.channel_name or "当前频道",
+            )
+            self.destination.addItem(destination.label, destination)
+        else:
+            self.destination.addItem("正在读取频道…", None)
+
+    def _read_session(self) -> None:
+        self.sync_button.setEnabled(False)
+        self.sync_button.setText("正在读取…")
+        self.state.setText("正在读取 Oopz 登录态和频道列表")
+        self.session_requested.emit()
+
+    def apply_login_result(self, result: LoginResult) -> None:
+        self._updating = True
+        self._base = result.settings
+        current_key = (result.settings.area_id, result.settings.channel_id)
+        self.server.setText(result.current_area_name or "未检测到当前语音服务器")
+        self.destination.clear()
+        self.destination.addItem("请选择文字频道", None)
+        selected = 0
+        for destination in result.destinations:
+            self.destination.addItem(destination.label, destination)
+            if (destination.area_id, destination.channel_id) == current_key:
+                selected = self.destination.count() - 1
+        if not result.destinations:
+            self.destination.setItemText(0, "请先加入 Oopz 语音服务器")
+        self.destination.setCurrentIndex(selected)
+        self.sync_button.setEnabled(True)
+        self.sync_button.setText("重新读取服务器和频道")
+        self.state.setText("手动选择 HUD 要读写的文字频道")
+        self._updating = False
 
     def show_error(self, message: str) -> None:
-        self.current_channel.setText("Oopz 未连接")
+        self.sync_button.setEnabled(True)
+        self.sync_button.setText("重新读取服务器和频道")
+        self.server.setText("Oopz 未连接")
         self.state.setText(message)
 
     def set_update_status(self, text: str) -> None:
@@ -386,6 +434,7 @@ class SetupDialog(QDialog):
             parse_hotkey(visibility_hotkey)
         except ValueError:
             return
+        destination = self.destination.currentData()
         updates = {
             "hotkey": hotkey,
             "visibility_hotkey": visibility_hotkey,
@@ -393,7 +442,18 @@ class SetupDialog(QDialog):
             "font_size": self.font_size.value(),
             "text_opacity": self.text_opacity.value(),
             "backdrop_opacity": self.backdrop_opacity.value(),
+            "area_id": "",
+            "area_name": "",
+            "channel_id": "",
+            "channel_name": "",
         }
+        if isinstance(destination, Destination):
+            updates.update(
+                area_id=destination.area_id,
+                area_name=destination.area_name,
+                channel_id=destination.channel_id,
+                channel_name=destination.channel_name,
+            )
         self._base = replace(self._base, **updates)
         self.settings_changed.emit(self._base)
 

@@ -9,11 +9,12 @@ from PySide6.QtGui import QKeyEvent
 from PySide6.QtWidgets import QApplication, QSlider, QSpinBox
 
 from oopz_overlay import __version__
+from oopz_overlay.gateway import Destination, LoginResult
 from oopz_overlay.settings import AppSettings
 from oopz_overlay.widgets import HotkeyRecorder, SetupDialog
 
 
-def test_settings_use_direct_controls_and_show_read_only_oopz_channel() -> None:
+def test_settings_keep_direct_controls_and_restore_manual_channel_selection() -> None:
     app = QApplication.instance() or QApplication([])
     dialog = SetupDialog(AppSettings())
     observed: list[AppSettings] = []
@@ -21,24 +22,43 @@ def test_settings_use_direct_controls_and_show_read_only_oopz_channel() -> None:
     dialog.show()
     app.processEvents()
 
-    dialog.set_current_channel("综合文字", connected=True)
+    settings = AppSettings(
+        device_id="device",
+        person_uid="person",
+        jwt_token="token",
+        area_id="area",
+        area_name="猫尾服务器",
+        channel_id="general",
+        channel_name="综合文字",
+    )
+    destinations = (
+        Destination("area", "猫尾服务器", "general", "综合文字"),
+        Destination("area", "猫尾服务器", "strategy", "攻略"),
+    )
+    dialog.apply_login_result(
+        LoginResult(settings, destinations, "area", "猫尾服务器", True)
+    )
 
     assert dialog.windowTitle() == "Oopz 文字上屏"
     assert dialog.version.text() == f"v{__version__}"
-    assert dialog.current_channel.text() == "#综合文字"
-    assert not hasattr(dialog, "destination")
-    assert not hasattr(dialog, "sync_button")
+    assert dialog.server.text() == "猫尾服务器"
+    assert dialog.destination.count() == 3
+    assert dialog.destination.currentData().channel_id == "general"
+    assert observed == []
+    assert hasattr(dialog, "sync_button")
     assert isinstance(dialog.activation_hotkey, HotkeyRecorder)
     assert isinstance(dialog.visibility_hotkey, HotkeyRecorder)
     assert isinstance(dialog.font_size, QSpinBox)
     assert isinstance(dialog.text_opacity, QSlider)
     assert isinstance(dialog.backdrop_opacity, QSlider)
 
+    dialog.destination.setCurrentIndex(2)
     dialog.font_size.setValue(18)
     dialog.text_opacity.setValue(72)
     dialog.backdrop_opacity.setValue(38)
     app.processEvents()
 
+    assert observed[-1].channel_id == "strategy"
     assert observed[-1].font_size == 18
     assert observed[-1].text_opacity == 72
     assert observed[-1].backdrop_opacity == 38
