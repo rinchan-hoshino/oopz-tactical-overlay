@@ -27,7 +27,22 @@ VK_RWIN = 0x5C
 GWL_EXSTYLE = -20
 WS_EX_TRANSPARENT = 0x00000020
 WS_EX_NOACTIVATE = 0x08000000
+WM_HOTKEY = 0x0312
+HOTKEY_ACTIVATE_ID = 0xB001
+HOTKEY_VISIBILITY_ID = 0xB002
+MOD_ALT = 0x0001
+MOD_CONTROL = 0x0002
+MOD_SHIFT = 0x0004
+MOD_WIN = 0x0008
+MOD_NOREPEAT = 0x4000
+HWND_TOPMOST = -1
 SW_SHOW = 5
+SW_RESTORE = 9
+SWP_NOSIZE = 0x0001
+SWP_NOMOVE = 0x0002
+SWP_NOACTIVATE = 0x0010
+SWP_SHOWWINDOW = 0x0040
+SWP_NOOWNERZORDER = 0x0200
 
 _MODIFIER_KEYS = {
     "ctrl": VK_CONTROL,
@@ -95,11 +110,7 @@ def parse_hotkey(value: str) -> HotkeySpec:
     )
 
 
-def focus_window(window_id: int, input_id: int) -> bool:
-    if os.name != "nt":
-        return False
-    user32 = ctypes.windll.user32
-    kernel32 = ctypes.windll.kernel32
+def _focus_window_native(user32, kernel32, window_id: int, input_id: int) -> bool:
     foreground = int(user32.GetForegroundWindow() or 0)
     foreground_thread = (
         int(user32.GetWindowThreadProcessId(foreground, None)) if foreground else 0
@@ -111,15 +122,55 @@ def focus_window(window_id: int, input_id: int) -> bool:
         and user32.AttachThreadInput(current_thread, foreground_thread, True)
     )
     try:
-        user32.ShowWindow(window_id, SW_SHOW)
+        user32.ShowWindow(window_id, SW_RESTORE)
+        user32.SetWindowPos(
+            window_id,
+            HWND_TOPMOST,
+            0,
+            0,
+            0,
+            0,
+            SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW | SWP_NOOWNERZORDER,
+        )
         user32.BringWindowToTop(window_id)
         user32.SetForegroundWindow(window_id)
         user32.SetActiveWindow(window_id)
         user32.SetFocus(input_id)
+        if int(user32.GetForegroundWindow() or 0) != window_id:
+            switch_to_window = getattr(user32, "SwitchToThisWindow", None)
+            if switch_to_window is not None:
+                switch_to_window(window_id, True)
+            user32.SetForegroundWindow(window_id)
+            user32.SetFocus(input_id)
         return int(user32.GetForegroundWindow() or 0) == window_id
     finally:
         if attached:
             user32.AttachThreadInput(current_thread, foreground_thread, False)
+
+
+def focus_window(window_id: int, input_id: int) -> bool:
+    if os.name != "nt":
+        return False
+    return _focus_window_native(
+        ctypes.windll.user32,
+        ctypes.windll.kernel32,
+        window_id,
+        input_id,
+    )
+
+
+def ensure_window_topmost(window_id: int) -> None:
+    if os.name != "nt":
+        return
+    ctypes.windll.user32.SetWindowPos(
+        window_id,
+        HWND_TOPMOST,
+        0,
+        0,
+        0,
+        0,
+        SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW | SWP_NOOWNERZORDER,
+    )
 
 
 def prepare_input_method(input_id: int) -> bool:
@@ -152,39 +203,64 @@ def set_window_click_through(window_id: int, enabled: bool) -> None:
     passive_bits = WS_EX_TRANSPARENT | WS_EX_NOACTIVATE
     style = style | passive_bits if enabled else style & ~passive_bits
     set_style(window_id, GWL_EXSTYLE, style)
+    ensure_window_topmost(window_id)
 
 
-class GlobalHotkeyMonitor:
-    """Observe a global hotkey without hooks or foreground-process inspection."""
+def _modifier_flags(spec: HotkeySpec) -> int:
+    flags = MOD_NOREPEAT
+    if spec.alt:
+        flags |= MOD_ALT
+    if spec.ctrl:
+        flags |= MOD_CONTROL
+    if spec.shift:
+        flags |= MOD_SHIFT
+    if spec.win:
+        flags |= MOD_WIN
+    return flags
 
-    def __init__(self) -> None:
-        if os.name != "nt":
-            raise OSError("Global input monitoring is only available on Windows")
-        self._states: dict[str, bool] = {}
-        self._specs: dict[str, HotkeySpec] = {}
-        self._user32 = ctypes.windll.user32
 
-    def hotkey_pressed(self, hotkey: str) -> bool:
-        spec = self._specs.get(hotkey)
-        if spec is None:
-            spec = parse_hotkey(hotkey)
-            self._specs[hotkey] = spec
-        modifier_state = {
-            "ctrl": self._is_down(VK_CONTROL),
-            "alt": self._is_down(VK_MENU),
-            "shift": self._is_down(VK_SHIFT),
-            "win": self._is_down(VK_LWIN) or self._is_down(VK_RWIN),
+class GlobalHotkeyRegistration:
+    """Register Windows-owned global shortcuts on the overlay window."""
+
+    def __init__(self, window_id: int, user32=None) -> None:
+        if os.name != "nt" and user32 is None:
+            raise OSError("Global hotkeys are only available on Windows")
+        self._window_id = window_id
+        self._user32 = user32 or ctypes.windll.user32
+        self._registered: dict[int, HotkeySpec] = {}
+
+    def configure(self, activation: str, visibility: str) -> None:
+        requested = {
+            HOTKEY_ACTIVATE_ID: parse_hotkey(activation),
+            HOTKEY_VISIBILITY_ID: parse_hotkey(visibility),
         }
-        modifiers_match = (
-            modifier_state["ctrl"] is spec.ctrl
-            and modifier_state["alt"] is spec.alt
-            and modifier_state["shift"] is spec.shift
-            and modifier_state["win"] is spec.win
-        )
-        down = self._is_down(spec.key) and modifiers_match
-        pressed = down and not self._states.get(hotkey, False)
-        self._states[hotkey] = down
-        return pressed
+        if requested == self._registered:
+            return
+        previous = dict(self._registered)
+        self._unregister_all()
+        try:
+            self._register_all(requested)
+        except OSError:
+            self._unregister_all()
+            self._register_all(previous)
+            raise
 
-    def _is_down(self, virtual_key: int) -> bool:
-        return bool(self._user32.GetAsyncKeyState(virtual_key) & 0x8000)
+    def close(self) -> None:
+        self._unregister_all()
+
+    def _register_all(self, hotkeys: dict[int, HotkeySpec]) -> None:
+        for identifier, spec in hotkeys.items():
+            if not self._user32.RegisterHotKey(
+                self._window_id,
+                identifier,
+                _modifier_flags(spec),
+                spec.key,
+            ):
+                error_code = ctypes.get_last_error() if os.name == "nt" else 0
+                raise OSError(error_code, "快捷键已被其他程序占用")
+            self._registered[identifier] = spec
+
+    def _unregister_all(self) -> None:
+        for identifier in tuple(self._registered):
+            self._user32.UnregisterHotKey(self._window_id, identifier)
+        self._registered.clear()

@@ -37,7 +37,7 @@ sdist = { url = "https://files.pythonhosted.org/packages/3f/d8/bdb7febea4b4fe5d3
 
 [[package]]
 name = "oopz-tactical-overlay"
-version = "0.7.1"
+version = "0.7.2"
 source = { editable = "." }
 dependencies = [
     { name = "pyside6-essentials" },

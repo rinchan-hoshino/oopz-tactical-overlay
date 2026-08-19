@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import importlib
 import os
 import sys
 import threading
@@ -29,7 +30,7 @@ from .updater import (
     start_pending_update,
 )
 from .widgets import FONT_FAMILY, OverlayWindow, SetupDialog
-from .win32_input import GlobalHotkeyMonitor
+from .win32_input import GlobalHotkeyRegistration
 
 
 class Bridge(QObject):
@@ -59,8 +60,15 @@ class AppController(QObject):
             self.settings = AppSettings()
         self.current_channel = ""
         self.overlay.configure(self.settings)
-
-        self.monitor = GlobalHotkeyMonitor()
+        self.hotkeys = GlobalHotkeyRegistration(int(self.overlay.winId()))
+        self._hotkey_startup_error = ""
+        try:
+            self.hotkeys.configure(
+                self.settings.hotkey,
+                self.settings.visibility_hotkey,
+            )
+        except OSError as exc:
+            self._hotkey_startup_error = str(exc)
         self.gateway = GatewayRuntime(
             GatewayCallbacks(
                 timeline=self.bridge.timeline.emit,
@@ -79,6 +87,8 @@ class AppController(QObject):
         self.overlay.send_requested.connect(self.gateway.send)
         self.overlay.edit_committed.connect(self._edit_committed)
         self.overlay.edit_cancelled.connect(self._edit_cancelled)
+        self.overlay.activation_hotkey_pressed.connect(self._activate_overlay)
+        self.overlay.visibility_hotkey_pressed.connect(self._toggle_visibility)
 
         self._update_status = "等待检查更新"
         if (self.state_root / "update-error.json").is_file():
@@ -92,11 +102,8 @@ class AppController(QObject):
         self.tray.activated.connect(self._tray_activated)
         self.tray.show()
 
-        self.input_timer = QTimer(self)
-        self.input_timer.setInterval(18)
-        self.input_timer.timeout.connect(self._poll_hotkey)
-        self.input_timer.start()
-
+        if self._hotkey_startup_error:
+            QTimer.singleShot(0, self._show_hotkey_startup_error)
         QTimer.singleShot(1800, self._check_update)
 
         QTimer.singleShot(80, self._connect_current)
@@ -126,16 +133,22 @@ class AppController(QObject):
         painter.end()
         return QIcon(pixmap)
 
-    def _poll_hotkey(self) -> None:
+    def _activate_overlay(self) -> None:
         if self.overlay.is_active or self.overlay.is_editing:
             return
-        if self.monitor.hotkey_pressed(self.settings.visibility_hotkey):
-            self.overlay.toggle_visibility()
+        if self.setup_dialog is not None:
+            self.setup_dialog.hide()
+        self.overlay.show_overlay()
+
+    def _toggle_visibility(self) -> None:
+        if self.overlay.is_active or self.overlay.is_editing:
             return
-        if self.monitor.hotkey_pressed(self.settings.hotkey):
-            if self.setup_dialog is not None:
-                self.setup_dialog.hide()
-            self.overlay.show_overlay()
+        self.overlay.toggle_visibility()
+
+    def _show_hotkey_startup_error(self) -> None:
+        self.open_settings()
+        if self.setup_dialog is not None:
+            self.setup_dialog.show_error(self._hotkey_startup_error)
 
     def _connect_current(self) -> None:
         self.overlay.clear_messages()
@@ -164,6 +177,12 @@ class AppController(QObject):
         dialog.activateWindow()
 
     def _configured(self, settings: AppSettings) -> None:
+        try:
+            self.hotkeys.configure(settings.hotkey, settings.visibility_hotkey)
+        except OSError as exc:
+            if self.setup_dialog is not None:
+                self.setup_dialog.show_error(str(exc))
+            return
         self.settings = settings
         self.store.save(settings)
         self.overlay.configure(settings)
@@ -278,7 +297,7 @@ class AppController(QObject):
         )
 
     def shutdown(self) -> None:
-        self.input_timer.stop()
+        self.hotkeys.close()
         self.overlay.hide()
         self.tray.hide()
         self.gateway.close()
@@ -378,6 +397,12 @@ def _close_onefile_splash() -> None:
         splash_feedback.unlink(missing_ok=True)
 
 
+def _automation_import_probe() -> int:
+    importlib.import_module("comtypes.stream")
+    importlib.import_module("uiautomation")
+    return 0
+
+
 def main() -> int:
     if os.name != "nt":
         raise SystemExit("Oopz Tactical Overlay currently supports Windows only.")
@@ -389,6 +414,9 @@ def main() -> int:
         index = arguments.index("--cleanup-updater")
         if index + 1 < len(arguments):
             cleanup_updater_later(Path(arguments[index + 1]))
+    if "--automation-import-probe" in arguments:
+        _close_onefile_splash()
+        return _automation_import_probe()
     state_root = AppController._state_root()
     if start_pending_update(state_root, __version__):
         return 0

@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import ctypes
+import os
+from ctypes import wintypes
 from dataclasses import replace
 from datetime import UTC, datetime
 
@@ -48,6 +51,10 @@ from .chat import ChatMessage, ChatTimeline
 from .intent import OverlayAction, OverlayIntent
 from .settings import AppSettings
 from .win32_input import (
+    HOTKEY_ACTIVATE_ID,
+    HOTKEY_VISIBILITY_ID,
+    WM_HOTKEY,
+    ensure_window_topmost,
     focus_window,
     parse_hotkey,
     prepare_input_method,
@@ -653,6 +660,8 @@ class MessageRow(QWidget):
 class OverlayWindow(QWidget):
     send_requested = Signal(str)
     settings_requested = Signal()
+    activation_hotkey_pressed = Signal()
+    visibility_hotkey_pressed = Signal()
     edit_committed = Signal(float, float, int, int)
     edit_cancelled = Signal()
 
@@ -680,6 +689,10 @@ class OverlayWindow(QWidget):
         self._resize_render_timer.setSingleShot(True)
         self._resize_render_timer.setInterval(60)
         self._resize_render_timer.timeout.connect(self._render_timeline)
+        self._topmost_timer = QTimer(self)
+        self._topmost_timer.setInterval(750)
+        self._topmost_timer.timeout.connect(self._restore_topmost)
+        self._topmost_timer.start()
 
         root = QVBoxLayout(self)
         root.setContentsMargins(5, 3, 5, 3)
@@ -839,6 +852,10 @@ class OverlayWindow(QWidget):
         if self.timeline.items:
             self._render_timeline()
 
+    def _restore_topmost(self) -> None:
+        if self.isVisible():
+            ensure_window_topmost(int(self.winId()))
+
     def _set_interactive(self, interactive: bool) -> None:
         self.setAttribute(
             Qt.WidgetAttribute.WA_TransparentForMouseEvents, not interactive
@@ -890,6 +907,7 @@ class OverlayWindow(QWidget):
         self._set_interactive(False)
         self.show()
         self._set_interactive(False)
+        self._restore_topmost()
 
     def show_overlay(self) -> None:
         self._active = True
@@ -907,6 +925,7 @@ class OverlayWindow(QWidget):
         self._set_interactive(True)
         self.show()
         self._set_interactive(True)
+        self._restore_topmost()
         self._focus_input()
         QTimer.singleShot(80, self._focus_input)
         QTimer.singleShot(160, self._finish_activation)
@@ -940,6 +959,7 @@ class OverlayWindow(QWidget):
         self._set_interactive(True)
         self.show()
         self._set_interactive(True)
+        self._restore_topmost()
         self.raise_()
         self.update()
 
@@ -1003,6 +1023,21 @@ class OverlayWindow(QWidget):
             self.hide()
         else:
             self.show_passive()
+
+    def nativeEvent(self, event_type, message):
+        if os.name == "nt":
+            native_message = ctypes.cast(
+                int(message), ctypes.POINTER(wintypes.MSG)
+            ).contents
+            if native_message.message == WM_HOTKEY:
+                identifier = int(native_message.wParam)
+                if identifier == HOTKEY_ACTIVATE_ID:
+                    self.activation_hotkey_pressed.emit()
+                    return True, 0
+                if identifier == HOTKEY_VISIBILITY_ID:
+                    self.visibility_hotkey_pressed.emit()
+                    return True, 0
+        return super().nativeEvent(event_type, message)
 
     def event(self, event) -> bool:
         if (

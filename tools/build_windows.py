@@ -48,6 +48,8 @@ def main() -> None:
             f"--product-version={windows_version}",
             "--copyright=Copyright 2026 RinChan",
             "--include-package=uiautomation",
+            "--include-package=comtypes",
+            "--nofollow-import-to=comtypes.test",
             "--include-package-data=certifi",
             f"--report={build / 'compilation-report.xml'}",
             str(ROOT / "tools" / "windows_entry.py"),
@@ -60,6 +62,12 @@ def main() -> None:
     release.mkdir(parents=True, exist_ok=True)
     target = release / f"{PRODUCT}.exe"
     shutil.copy2(built, target)
+    subprocess.run(
+        [target, "--automation-import-probe"],
+        cwd=ROOT,
+        check=True,
+        timeout=120,
+    )
     digest = hashlib.sha256(target.read_bytes()).hexdigest()
     manifest = {
         "schemaVersion": 1,

@@ -29,12 +29,7 @@ def test_app_controller_constructs_with_owned_state_root(tmp_path, monkeypatch) 
     assert not controller.overlay.is_active
     assert controller.setup_dialog is not None
     assert controller.setup_dialog.isVisible()
-    monkeypatch.setattr(
-        controller.monitor,
-        "hotkey_pressed",
-        lambda hotkey: hotkey == controller.settings.hotkey,
-    )
-    controller._poll_hotkey()
+    controller._activate_overlay()
     app.processEvents()
     assert controller.overlay.is_active
     assert not controller.setup_dialog.isVisible()
@@ -70,13 +65,7 @@ def test_visibility_hotkey_toggles_the_passive_hud(tmp_path, monkeypatch) -> Non
     controller.settings = AppSettings(hotkey="F8", visibility_hotkey="F9")
     controller.overlay.configure(controller.settings)
     controller.overlay.set_connection_status("#塔科夫", True)
-    monkeypatch.setattr(
-        controller.monitor,
-        "hotkey_pressed",
-        lambda hotkey: hotkey == "F9",
-    )
-
-    controller._poll_hotkey()
+    controller._toggle_visibility()
     app.processEvents()
 
     assert controller.overlay.isHidden()

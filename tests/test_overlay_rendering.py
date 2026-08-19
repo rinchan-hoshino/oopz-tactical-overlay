@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+import ctypes
+import os
+from ctypes import wintypes
+
 import pytest
 
 pytest.importorskip("PySide6")
@@ -17,6 +21,7 @@ from oopz_overlay.widgets import (
     OverlayWindow,
     _outline_width_for_font,
 )
+from oopz_overlay.win32_input import HOTKEY_ACTIVATE_ID, WM_HOTKEY
 
 
 def test_overlay_keeps_the_window_background_transparent(monkeypatch) -> None:
@@ -349,6 +354,38 @@ def test_activation_prepares_ime_and_wheel_scrolls_then_exit_returns_to_latest(
 
     window.configure(AppSettings(always_visible=False))
     window.hide()
+
+
+def test_visible_overlay_reasserts_native_topmost(monkeypatch) -> None:
+    app = QApplication.instance() or QApplication([])
+    window = OverlayWindow()
+    calls: list[int] = []
+    monkeypatch.setattr("oopz_overlay.widgets.ensure_window_topmost", calls.append)
+    window.set_connection_status("#战术", True)
+    window.show_passive()
+    app.processEvents()
+
+    window._restore_topmost()
+
+    assert calls[-1] == int(window.winId())
+    window.hide()
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows native hotkey message")
+def test_native_hotkey_message_emits_activation_signal() -> None:
+    window = OverlayWindow()
+    emitted: list[bool] = []
+    window.activation_hotkey_pressed.connect(lambda: emitted.append(True))
+    message = wintypes.MSG()
+    message.message = WM_HOTKEY
+    message.wParam = HOTKEY_ACTIVATE_ID
+
+    handled, _result = window.nativeEvent(
+        b"windows_generic_MSG", ctypes.addressof(message)
+    )
+
+    assert handled
+    assert emitted == [True]
 
 
 def test_visibility_toggle_hides_and_restores_passive_hud() -> None:

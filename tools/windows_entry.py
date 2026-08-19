@@ -38,6 +38,11 @@ if __name__ == "__main__":
         _unhandled_exception(*sys.exc_info())
         raise
     _record(f"EXIT code={exit_code}")
-    if "--smoke-test" in sys.argv or "--render-preview" in sys.argv:
+    one_shot_modes = {
+        "--smoke-test",
+        "--render-preview",
+        "--automation-import-probe",
+    }
+    if one_shot_modes.intersection(sys.argv):
         os._exit(exit_code)
     raise SystemExit(exit_code)
