@@ -6,7 +6,7 @@ def message(message_id: str, timestamp_us: int, text: str = "收到") -> ChatMes
         message_id=message_id,
         timestamp_us=timestamp_us,
         sender_id="u1",
-        sender_name="黑夜",
+        sender_name="玩家",
         text=text,
         mine=False,
     )

@@ -18,6 +18,7 @@ from PySide6.QtGui import (
     QColor,
     QFont,
     QFontMetricsF,
+    QKeyEvent,
     QMouseEvent,
     QPainter,
     QPainterPath,
@@ -27,35 +28,40 @@ from PySide6.QtGui import (
 )
 from PySide6.QtWidgets import (
     QCheckBox,
-    QComboBox,
     QDialog,
+    QFrame,
     QHBoxLayout,
     QLabel,
     QLineEdit,
     QListWidget,
     QListWidgetItem,
-    QMessageBox,
     QPushButton,
     QSizeGrip,
+    QSlider,
+    QSpinBox,
     QVBoxLayout,
     QWidget,
 )
 
 from . import __version__
 from .chat import ChatMessage, ChatTimeline
-from .gateway import Destination, LoginResult
 from .intent import OverlayAction, OverlayIntent
 from .settings import AppSettings
-from .win32_input import focus_window, parse_hotkey, set_window_click_through
+from .win32_input import (
+    focus_window,
+    parse_hotkey,
+    prepare_input_method,
+    set_window_click_through,
+)
 
-ACCENT = "#b9a36a"
-ACCENT_HOT = "#d6bd78"
-TEXT = "#e4dfd2"
-MUTED = "#85877e"
-SURFACE = "#111412"
-SURFACE_2 = "#1a1e1a"
-BORDER = "#4b5047"
-DANGER = "#c86f61"
+ACCENT = "#60a5fa"
+ACCENT_HOT = "#93c5fd"
+TEXT = "#f3f4f6"
+MUTED = "#9ca3af"
+SURFACE = "#202124"
+SURFACE_2 = "#2a2c31"
+BORDER = "#3d4046"
+DANGER = "#f28b82"
 FONT_FAMILY = "Microsoft YaHei UI"
 
 
@@ -66,208 +72,335 @@ def _ui_font(point_size: int, weight: QFont.Weight = QFont.Weight.Normal) -> QFo
     return font
 
 
+def _with_opacity(color: str, percentage: int) -> QColor:
+    value = QColor(color)
+    value.setAlpha(round(255 * max(0, min(100, percentage)) / 100))
+    return value
+
+
+_KEY_NAMES = {
+    int(Qt.Key.Key_Return): "Enter",
+    int(Qt.Key.Key_Enter): "Enter",
+    int(Qt.Key.Key_Tab): "Tab",
+    int(Qt.Key.Key_Space): "Space",
+    int(Qt.Key.Key_Escape): "Escape",
+    int(Qt.Key.Key_Delete): "Delete",
+    int(Qt.Key.Key_Insert): "Insert",
+    int(Qt.Key.Key_Home): "Home",
+    int(Qt.Key.Key_End): "End",
+    int(Qt.Key.Key_PageUp): "PageUp",
+    int(Qt.Key.Key_PageDown): "PageDown",
+    int(Qt.Key.Key_Left): "Left",
+    int(Qt.Key.Key_Right): "Right",
+    int(Qt.Key.Key_Up): "Up",
+    int(Qt.Key.Key_Down): "Down",
+}
+
+
+def _hotkey_from_event(event: QKeyEvent) -> str:
+    key = int(event.key())
+    if int(Qt.Key.Key_A) <= key <= int(Qt.Key.Key_Z):
+        key_name = chr(ord("A") + key - int(Qt.Key.Key_A))
+    elif int(Qt.Key.Key_0) <= key <= int(Qt.Key.Key_9):
+        key_name = chr(ord("0") + key - int(Qt.Key.Key_0))
+    elif int(Qt.Key.Key_F1) <= key <= int(Qt.Key.Key_F12):
+        key_name = f"F{key - int(Qt.Key.Key_F1) + 1}"
+    else:
+        key_name = _KEY_NAMES.get(key, "")
+    if not key_name:
+        raise ValueError("这个按键暂不支持")
+
+    modifiers = event.modifiers()
+    parts = []
+    if modifiers & Qt.KeyboardModifier.ControlModifier:
+        parts.append("Ctrl")
+    if modifiers & Qt.KeyboardModifier.AltModifier:
+        parts.append("Alt")
+    if modifiers & Qt.KeyboardModifier.ShiftModifier:
+        parts.append("Shift")
+    if modifiers & Qt.KeyboardModifier.MetaModifier:
+        parts.append("Win")
+    parts.append(key_name)
+    value = "+".join(parts)
+    parse_hotkey(value)
+    return value
+
+
+class HotkeyRecorder(QPushButton):
+    hotkey_changed = Signal(str)
+
+    def __init__(self, value: str, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self._value = value
+        self.is_recording = False
+        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        self.clicked.connect(self.begin_recording)
+        self._show_value()
+
+    def hotkey(self) -> str:
+        return self._value
+
+    def set_hotkey(self, value: str) -> None:
+        parse_hotkey(value)
+        self._value = value
+        self.is_recording = False
+        self._show_value()
+
+    def begin_recording(self) -> None:
+        self.is_recording = True
+        self.setText("请按下按键…")
+        self.setFocus(Qt.FocusReason.MouseFocusReason)
+
+    def _show_value(self) -> None:
+        self.setText(self._value)
+
+    def keyPressEvent(self, event: QKeyEvent) -> None:
+        if not self.is_recording:
+            super().keyPressEvent(event)
+            return
+        if event.isAutoRepeat():
+            event.accept()
+            return
+        try:
+            value = _hotkey_from_event(event)
+        except ValueError:
+            event.accept()
+            return
+        self._value = value
+        self.is_recording = False
+        self._show_value()
+        self.hotkey_changed.emit(value)
+        event.accept()
+
+    def focusOutEvent(self, event) -> None:
+        if self.is_recording:
+            self.is_recording = False
+            self._show_value()
+        super().focusOutEvent(event)
+
+
 class SetupDialog(QDialog):
-    session_requested = Signal()
     settings_changed = Signal(object)
-    drag_requested = Signal()
+    edit_requested = Signal()
 
     def __init__(self, current: AppSettings, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setFont(_ui_font(10))
-        self.setWindowTitle("Tactical Link")
-        self.setMinimumWidth(460)
+        self.setWindowTitle("Oopz 文字上屏")
+        self.setMinimumWidth(540)
+        self.setMinimumHeight(650)
         self._base = current
         self._updating = True
         self.setStyleSheet(
             f"""
             QDialog {{ background: {SURFACE}; color: {TEXT}; font-family: "{FONT_FAMILY}"; }}
-            QLabel {{ color: {TEXT}; font-family: "{FONT_FAMILY}"; }}
-            QLabel#title {{ color: {ACCENT_HOT}; font: 700 18px "{FONT_FAMILY}"; }}
-            QLabel#section {{ color: {MUTED}; font: 700 10px "{FONT_FAMILY}"; letter-spacing: 1px; }}
-            QLabel#version {{ color: {ACCENT}; font: 700 10px "{FONT_FAMILY}"; }}
-            QLabel#updateStatus {{ color: {MUTED}; font: 10px "Microsoft YaHei UI"; }}
-            QComboBox {{
-                background: {SURFACE_2}; color: {TEXT}; border: 1px solid {BORDER};
-                border-radius: 0; padding: 8px 10px; min-height: 22px;
+            QLabel {{ color: {TEXT}; background: transparent; }}
+            QLabel#title {{ font: 700 18px "{FONT_FAMILY}"; }}
+            QLabel#subtitle, QLabel#updateStatus, QLabel#hint {{ color: {MUTED}; }}
+            QLabel#section {{ color: {TEXT}; font: 700 11px "{FONT_FAMILY}"; }}
+            QLabel#value {{ color: {ACCENT_HOT}; font-weight: 600; }}
+            QFrame#card {{ background: {SURFACE_2}; border: 1px solid {BORDER}; border-radius: 10px; }}
+            QSpinBox, QPushButton {{
+                background: #34363c; color: {TEXT}; border: 1px solid #4a4d54;
+                border-radius: 7px; padding: 7px 10px; min-height: 22px;
             }}
-            QComboBox::drop-down {{ border: 0; width: 28px; }}
-            QComboBox QAbstractItemView {{
-                background: {SURFACE_2}; color: {TEXT}; border: 1px solid {BORDER};
-                selection-background-color: #37382e;
-            }}
-            QPushButton[action="true"] {{
-                background: transparent; color: {ACCENT}; border: 1px solid {BORDER};
-                border-radius: 0; padding: 7px 10px; text-align: left;
-            }}
-            QPushButton[action="true"]:hover {{ border-color: {ACCENT}; color: {ACCENT_HOT}; }}
-            QPushButton[action="true"]:pressed {{ background: #27291f; }}
+            QSpinBox:hover, QPushButton:hover {{ border-color: #6b707a; }}
+            QPushButton:pressed {{ background: #41444b; }}
+            QPushButton#primary {{ background: #2563eb; border-color: #3b82f6; color: white; font-weight: 600; }}
+            QPushButton#primary:hover {{ background: #2f6ff0; }}
+            QSlider::groove:horizontal {{ background: #454850; height: 4px; border-radius: 2px; }}
+            QSlider::sub-page:horizontal {{ background: {ACCENT}; border-radius: 2px; }}
+            QSlider::handle:horizontal {{ background: #ffffff; border: 2px solid {ACCENT}; width: 14px; margin: -6px 0; border-radius: 8px; }}
             QCheckBox {{ color: {TEXT}; spacing: 8px; }}
             """
         )
 
         root = QVBoxLayout(self)
-        root.setContentsMargins(20, 18, 20, 20)
-        root.setSpacing(10)
+        root.setContentsMargins(22, 20, 22, 20)
+        root.setSpacing(14)
 
         header = QHBoxLayout()
-        title = QLabel("TACTICAL LINK  //  OOPZ")
+        titles = QVBoxLayout()
+        titles.setSpacing(2)
+        title = QLabel("Oopz 文字上屏")
         title.setObjectName("title")
-        header.addWidget(title)
+        titles.addWidget(title)
+        subtitle = QLabel("游戏里的 Oopz 文字频道")
+        subtitle.setObjectName("subtitle")
+        titles.addWidget(subtitle)
+        header.addLayout(titles)
         header.addStretch(1)
         self.version = QLabel(f"v{__version__}")
-        self.version.setObjectName("version")
-        header.addWidget(self.version)
-        self.state = QLabel("LOCAL")
-        self.state.setStyleSheet(f'color:{MUTED}; font:10px "{FONT_FAMILY}";')
-        header.addWidget(self.state)
+        self.version.setObjectName("value")
+        header.addWidget(self.version, 0, Qt.AlignmentFlag.AlignTop)
         root.addLayout(header)
-        self.update_status = QLabel("更新 // 等待自动检查")
+        self.update_status = QLabel("正在检查更新")
         self.update_status.setObjectName("updateStatus")
         root.addWidget(self.update_status)
-        root.addSpacing(6)
 
-        root.addWidget(self._section("CURRENT OOPZ SERVER"))
-        self.server = QLabel("未检测到当前服务器")
-        self.server.setStyleSheet(
-            f"color:{ACCENT_HOT}; font:700 13px 'Microsoft YaHei UI';"
+        connection_card, connection = self._card("Oopz 当前频道")
+        self.current_channel = QLabel("等待 Oopz")
+        self.current_channel.setObjectName("value")
+        connection.addWidget(self.current_channel)
+        self.state = QLabel("在 Oopz 中切换频道，HUD 会自动跟随")
+        self.state.setObjectName("hint")
+        connection.addWidget(self.state)
+        root.addWidget(connection_card)
+
+        shortcut_card, shortcuts = self._card("快捷键")
+        self.activation_hotkey = HotkeyRecorder(current.hotkey or "F8")
+        shortcuts.addLayout(self._setting_row("输入消息", self.activation_hotkey))
+        self.visibility_hotkey = HotkeyRecorder(current.visibility_hotkey or "F9")
+        shortcuts.addLayout(
+            self._setting_row("显示 / 隐藏 HUD", self.visibility_hotkey)
         )
-        root.addWidget(self.server)
-        self.destination = QComboBox()
-        root.addWidget(self.destination)
-        self.sync_button = QPushButton("↻  重新检测当前服务器")
-        self.sync_button.setProperty("action", True)
-        root.addWidget(self.sync_button)
+        hint = QLabel("点击键位，然后直接按下要绑定的按键")
+        hint.setObjectName("hint")
+        shortcuts.addWidget(hint)
+        root.addWidget(shortcut_card)
 
-        root.addSpacing(6)
-        root.addWidget(self._section("INPUT"))
-        self.hotkey = QComboBox()
-        self.hotkey.addItems(["F8", "F9", "F10", "Enter"])
-        self.hotkey.setCurrentText(current.hotkey or "F8")
-        root.addWidget(self.hotkey)
+        appearance_card, appearance = self._card("HUD 外观")
+        self.font_size = QSpinBox()
+        self.font_size.setRange(9, 20)
+        self.font_size.setSuffix(" pt")
+        self.font_size.setValue(current.font_size)
+        appearance.addLayout(self._setting_row("文字大小", self.font_size))
 
-        self.font_size = QComboBox()
-        for size in range(9, 21):
-            self.font_size.addItem(f"HUD 字号  {size} pt", size)
-        selected_font_size = self.font_size.findData(current.font_size)
-        self.font_size.setCurrentIndex(max(0, selected_font_size))
-        root.addWidget(self.font_size)
+        self.text_opacity = QSlider(Qt.Orientation.Horizontal)
+        self.text_opacity.setRange(20, 100)
+        self.text_opacity.setValue(current.text_opacity)
+        self.text_opacity_value = QLabel(f"{current.text_opacity}%")
+        self.text_opacity_value.setObjectName("value")
+        appearance.addLayout(
+            self._slider_row("文字透明度", self.text_opacity, self.text_opacity_value)
+        )
 
-        self.always_visible = QCheckBox("常显")
+        self.backdrop_opacity = QSlider(Qt.Orientation.Horizontal)
+        self.backdrop_opacity.setRange(0, 85)
+        self.backdrop_opacity.setValue(current.backdrop_opacity)
+        self.backdrop_opacity_value = QLabel(f"{current.backdrop_opacity}%")
+        self.backdrop_opacity_value.setObjectName("value")
+        appearance.addLayout(
+            self._slider_row(
+                "背景遮罩",
+                self.backdrop_opacity,
+                self.backdrop_opacity_value,
+            )
+        )
+        self.always_visible = QCheckBox("连接后显示 HUD")
         self.always_visible.setChecked(current.always_visible)
-        root.addWidget(self.always_visible)
+        appearance.addWidget(self.always_visible)
+        self.edit_button = QPushButton("编辑 HUD 位置与大小")
+        self.edit_button.setObjectName("primary")
+        appearance.addWidget(self.edit_button)
+        root.addWidget(appearance_card)
+        root.addStretch(1)
 
-        self.drag_button = QPushButton("↔  拖动 HUD 位置")
-        self.drag_button.setProperty("action", True)
-        root.addWidget(self.drag_button)
-
-        self.sync_button.clicked.connect(self._read_session)
-        self.drag_button.clicked.connect(self.drag_requested.emit)
-        self.destination.currentIndexChanged.connect(self._emit_current)
-        self.hotkey.currentTextChanged.connect(self._emit_current)
-        self.font_size.currentIndexChanged.connect(self._emit_current)
+        self.edit_button.clicked.connect(self._request_edit)
+        self.activation_hotkey.hotkey_changed.connect(self._emit_current)
+        self.visibility_hotkey.hotkey_changed.connect(self._emit_current)
+        self.font_size.valueChanged.connect(self._emit_current)
+        self.text_opacity.valueChanged.connect(self._text_opacity_changed)
+        self.backdrop_opacity.valueChanged.connect(self._backdrop_opacity_changed)
         self.always_visible.toggled.connect(self._emit_current)
 
-        self._populate_current_destination(current)
         self._updating = False
 
     @staticmethod
-    def _section(text: str) -> QLabel:
-        label = QLabel(text)
-        label.setObjectName("section")
-        return label
+    def _card(title: str) -> tuple[QFrame, QVBoxLayout]:
+        card = QFrame()
+        card.setObjectName("card")
+        layout = QVBoxLayout(card)
+        layout.setContentsMargins(16, 14, 16, 14)
+        layout.setSpacing(10)
+        heading = QLabel(title)
+        heading.setObjectName("section")
+        layout.addWidget(heading)
+        return card, layout
 
-    def _populate_current_destination(self, current: AppSettings) -> None:
-        self.destination.clear()
-        if current.area_id:
-            self.server.setText(current.area_name or "上次检测的服务器")
-        if current.area_id and current.channel_id:
-            destination = Destination(
-                current.area_id,
-                current.area_name or "当前服务器",
-                current.channel_id,
-                current.channel_name or "当前频道",
-            )
-            self.destination.addItem(destination.label, destination)
-        else:
-            self.destination.addItem("请先加入 Oopz 语音频道", None)
+    @staticmethod
+    def _setting_row(title: str, control: QWidget) -> QHBoxLayout:
+        row = QHBoxLayout()
+        row.addWidget(QLabel(title))
+        row.addStretch(1)
+        control.setMinimumWidth(150)
+        row.addWidget(control)
+        return row
 
-    def _read_session(self) -> None:
-        self.sync_button.setEnabled(False)
-        self.sync_button.setText("正在同步…")
-        self.state.setText("SYNC")
-        self.session_requested.emit()
+    @staticmethod
+    def _slider_row(title: str, slider: QSlider, value: QLabel) -> QHBoxLayout:
+        row = QHBoxLayout()
+        row.addWidget(QLabel(title))
+        row.addWidget(slider, 1)
+        value.setMinimumWidth(42)
+        value.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        row.addWidget(value)
+        return row
 
-    def apply_login_result(self, result: LoginResult) -> None:
-        self._updating = True
-        self._base = result.settings
-        current_key = (result.settings.area_id, result.settings.channel_id)
-        destinations = list(result.destinations)
-        self.server.setText(result.current_area_name or "未检测到当前 Oopz 语音服务器")
-
-        self.destination.clear()
-        selected = -1
-        for destination in destinations:
-            self.destination.addItem(destination.label, destination)
-            if (destination.area_id, destination.channel_id) == current_key:
-                selected = self.destination.count() - 1
-        if not destinations:
-            self.destination.addItem("请先加入 Oopz 语音频道", None)
-        elif selected >= 0:
-            self.destination.setCurrentIndex(selected)
-        else:
-            self.destination.setCurrentIndex(0)
-        self.sync_button.setEnabled(True)
-        self.sync_button.setText("↻  重新检测当前服务器")
-        self.state.setText("READY")
-        self._updating = False
-        self._emit_current()
+    def set_current_channel(self, channel_name: str, *, connected: bool) -> None:
+        self.current_channel.setText(
+            f"#{channel_name}" if connected and channel_name else "等待 Oopz"
+        )
+        self.state.setText(
+            "在 Oopz 中切换频道，HUD 会自动跟随"
+            if connected
+            else "请打开 Oopz 并进入文字频道"
+        )
 
     def show_error(self, message: str) -> None:
-        self.sync_button.setEnabled(True)
-        self.sync_button.setText("↻  重新检测当前服务器")
-        self.state.setText("ERROR")
-        QMessageBox.warning(self, "同步失败", message)
+        self.current_channel.setText("Oopz 未连接")
+        self.state.setText(message)
 
     def set_update_status(self, text: str) -> None:
         self.update_status.setText(text)
 
+    def sync_settings(self, settings: AppSettings) -> None:
+        self._base = settings
+
+    def _request_edit(self) -> None:
+        self.hide()
+        self.edit_requested.emit()
+
+    def _text_opacity_changed(self, value: int) -> None:
+        self.text_opacity_value.setText(f"{value}%")
+        self._emit_current()
+
+    def _backdrop_opacity_changed(self, value: int) -> None:
+        self.backdrop_opacity_value.setText(f"{value}%")
+        self._emit_current()
+
     def _emit_current(self) -> None:
         if self._updating:
             return
-        destination = self.destination.currentData()
-        hotkey = self.hotkey.currentText().strip()
+        hotkey = self.activation_hotkey.hotkey()
+        visibility_hotkey = self.visibility_hotkey.hotkey()
         try:
             parse_hotkey(hotkey)
+            parse_hotkey(visibility_hotkey)
         except ValueError:
             return
         updates = {
             "hotkey": hotkey,
+            "visibility_hotkey": visibility_hotkey,
             "always_visible": self.always_visible.isChecked(),
-            "font_size": int(self.font_size.currentData()),
+            "font_size": self.font_size.value(),
+            "text_opacity": self.text_opacity.value(),
+            "backdrop_opacity": self.backdrop_opacity.value(),
         }
-        if isinstance(destination, Destination):
-            updates.update(
-                area_id=destination.area_id,
-                area_name=destination.area_name,
-                channel_id=destination.channel_id,
-                channel_name=destination.channel_name,
-            )
         self._base = replace(self._base, **updates)
         self.settings_changed.emit(self._base)
 
 
-class DragHandle(QLabel):
+class DragSurface(QLabel):
     moved = Signal(QPoint)
-    released = Signal()
 
     def __init__(self) -> None:
-        super().__init__("MOVE HUD  //  拖动后松开")
+        super().__init__("拖动调整位置")
         self._offset = QPoint()
         self.setCursor(Qt.CursorShape.SizeAllCursor)
         self.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.setStyleSheet(
-            f"background:rgba(16,18,15,220); color:{ACCENT_HOT};"
-            f'border:1px solid {ACCENT}; padding:5px; font:700 10px "{FONT_FAMILY}";'
+            f"color:{TEXT}; background:transparent; font:600 10px '{FONT_FAMILY}';"
         )
 
     def mousePressEvent(self, event: QMouseEvent) -> None:
@@ -282,10 +415,35 @@ class DragHandle(QLabel):
             self._offset = current
             event.accept()
 
-    def mouseReleaseEvent(self, event: QMouseEvent) -> None:
-        if event.button() == Qt.MouseButton.LeftButton:
-            self.released.emit()
-            event.accept()
+
+class EditorBar(QFrame):
+    moved = Signal(QPoint)
+    cancelled = Signal()
+    accepted = Signal()
+
+    def __init__(self, parent: QWidget) -> None:
+        super().__init__(parent)
+        self.setObjectName("hudEditor")
+        self.setStyleSheet(
+            f"""
+            QFrame#hudEditor {{ background: rgba(32,33,36,242); border: 1px solid {ACCENT}; border-radius: 8px; }}
+            QPushButton {{ background: #34363c; color: {TEXT}; border: 1px solid #5a5d65; border-radius: 5px; padding: 5px 12px; }}
+            QPushButton#done {{ background: #2563eb; border-color: #3b82f6; color: white; }}
+            """
+        )
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(8, 6, 8, 6)
+        layout.setSpacing(6)
+        self.drag_surface = DragSurface()
+        self.drag_surface.moved.connect(self.moved.emit)
+        layout.addWidget(self.drag_surface, 1)
+        self.cancel_button = QPushButton("取消")
+        self.cancel_button.clicked.connect(self.cancelled.emit)
+        layout.addWidget(self.cancel_button)
+        self.done_button = QPushButton("完成")
+        self.done_button.setObjectName("done")
+        self.done_button.clicked.connect(self.accepted.emit)
+        layout.addWidget(self.done_button)
 
 
 def _outlined_text_path(
@@ -342,10 +500,12 @@ def _paint_outlined_path(
     stroke_width: float,
 ) -> None:
     painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+    stroke = QColor("#000000")
+    stroke.setAlpha(fill.alpha())
     painter.strokePath(
         path,
         QPen(
-            QColor("#000000"),
+            stroke,
             stroke_width,
             Qt.PenStyle.SolidLine,
             Qt.PenCapStyle.RoundCap,
@@ -382,6 +542,7 @@ class OutlinedLineEdit(QLineEdit):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._preedit = ""
+        self._text_opacity = 100
         palette = self.palette()
         transparent = QColor(0, 0, 0, 0)
         palette.setColor(QPalette.ColorRole.Text, transparent)
@@ -392,6 +553,10 @@ class OutlinedLineEdit(QLineEdit):
     def inputMethodEvent(self, event) -> None:
         super().inputMethodEvent(event)
         self._preedit = event.preeditString()
+        self.update()
+
+    def set_text_opacity(self, percentage: int) -> None:
+        self._text_opacity = max(20, min(100, percentage))
         self.update()
 
     def rendered_text(self) -> str:
@@ -426,7 +591,7 @@ class OutlinedLineEdit(QLineEdit):
         _paint_outlined_path(
             painter,
             path,
-            QColor(TEXT),
+            _with_opacity(TEXT, self._text_opacity),
             _outline_width_for_font(self.font()),
         )
         if self.hasFocus() and not self.isReadOnly():
@@ -445,6 +610,7 @@ class MessageRow(QWidget):
         self,
         message: ChatMessage,
         font_size: int = 12,
+        text_opacity: int = 100,
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
@@ -459,16 +625,26 @@ class MessageRow(QWidget):
             moment = (
                 datetime.fromtimestamp(seconds, tz=UTC).astimezone().strftime("%H:%M")
             )
-        sender = OutlinedLabel(f"[{moment}] {message.sender_name} //")
+        sender = OutlinedLabel(f"{moment}  {message.sender_name}")
         sender.setFont(_ui_font(font_size, QFont.Weight.Bold))
-        sender.setStyleSheet(
-            f"color:{ACCENT_HOT if message.mine else '#a8b8a0'};background:transparent;"
+        sender_palette = sender.palette()
+        sender_palette.setColor(
+            QPalette.ColorRole.WindowText,
+            _with_opacity(ACCENT_HOT if message.mine else "#b7c4b1", text_opacity),
         )
+        sender.setPalette(sender_palette)
+        sender.setStyleSheet("background:transparent;")
         text = OutlinedLabel(message.text)
         text.setWordWrap(True)
         text.setMaximumWidth(570)
         text.setFont(_ui_font(font_size))
-        text.setStyleSheet(f"color:{TEXT}; background:transparent;")
+        text_palette = text.palette()
+        text_palette.setColor(
+            QPalette.ColorRole.WindowText,
+            _with_opacity(TEXT, text_opacity),
+        )
+        text.setPalette(text_palette)
+        text.setStyleSheet("background:transparent;")
         layout.addWidget(sender, 0, Qt.AlignmentFlag.AlignTop)
         layout.addWidget(text, 0, Qt.AlignmentFlag.AlignTop)
         layout.addStretch(1)
@@ -477,8 +653,8 @@ class MessageRow(QWidget):
 class OverlayWindow(QWidget):
     send_requested = Signal(str)
     settings_requested = Signal()
-    position_changed = Signal(float, float)
-    size_changed = Signal(int, int)
+    edit_committed = Signal(float, float, int, int)
+    edit_cancelled = Signal()
 
     def __init__(self) -> None:
         super().__init__(
@@ -495,7 +671,9 @@ class OverlayWindow(QWidget):
         self._connected = False
         self._settings = AppSettings()
         self._active = False
-        self._dragging = False
+        self._editing = False
+        self._user_hidden = False
+        self._edit_original = None
         self._activation_guard = False
         self.setMinimumSize(260, 135)
         self._resize_render_timer = QTimer(self)
@@ -506,12 +684,6 @@ class OverlayWindow(QWidget):
         root = QVBoxLayout(self)
         root.setContentsMargins(5, 3, 5, 3)
         root.setSpacing(2)
-
-        self.drag_handle = DragHandle()
-        self.drag_handle.hide()
-        self.drag_handle.moved.connect(lambda delta: self.move(self.pos() + delta))
-        self.drag_handle.released.connect(self._finish_drag)
-        root.addWidget(self.drag_handle)
 
         self.status = QLabel("")
         self.status.setStyleSheet(
@@ -539,6 +711,7 @@ class OverlayWindow(QWidget):
         self.input.setReadOnly(True)
         self.input.returnPressed.connect(self._submit)
         self.input.installEventFilter(self)
+        self.history.viewport().installEventFilter(self)
         self.input.setStyleSheet(
             """
             QLineEdit {
@@ -558,23 +731,38 @@ class OverlayWindow(QWidget):
         input_row.addWidget(self.input, 1)
         root.addLayout(input_row)
         self.resize_grip = QSizeGrip(self)
-        self.resize_grip.setFixedSize(16, 16)
+        self.resize_grip.setFixedSize(18, 18)
         self.resize_grip.hide()
-        self._position_resize_grip()
+        self.editor = EditorBar(self)
+        self.editor.hide()
+        self.editor.moved.connect(lambda delta: self.move(self.pos() + delta))
+        self.editor.cancelled.connect(self.cancel_edit)
+        self.editor.accepted.connect(self.commit_edit)
+        self._position_floating_controls()
         self._apply_font_size(self._settings.font_size)
 
     @property
     def is_active(self) -> bool:
         return self._active
 
+    @property
+    def is_editing(self) -> bool:
+        return self._editing
+
+    @property
+    def backdrop_alpha(self) -> int:
+        return round(255 * self._settings.backdrop_opacity / 100)
+
     def configure(self, settings: AppSettings) -> None:
         self._settings = settings
         self._apply_font_size(settings.font_size)
-        if self._dragging:
+        self.input.set_text_opacity(settings.text_opacity)
+        self.update()
+        if self._editing:
             return
         if self.isVisible() and self._active:
             self._place_window()
-        elif settings.always_visible and self._connected:
+        elif settings.always_visible and self._connected and not self._user_hidden:
             self.show_passive()
         else:
             self.hide()
@@ -584,7 +772,12 @@ class OverlayWindow(QWidget):
         self.input.setReadOnly(not (connected and self._active))
         self.status.setText(text)
         self.status.setVisible(bool(text) and not connected and self._active)
-        if connected and self._settings.always_visible and not self._active:
+        if (
+            connected
+            and self._settings.always_visible
+            and not self._active
+            and not self._user_hidden
+        ):
             self.show_passive()
         elif not connected and not self._active:
             self.hide()
@@ -594,6 +787,10 @@ class OverlayWindow(QWidget):
             return
         self._render_timeline()
 
+    def clear_messages(self) -> None:
+        self.timeline = ChatTimeline(limit=80)
+        self.history.clear()
+
     def _render_timeline(self, *, force_latest: bool = False) -> None:
         scroll_bar = self.history.verticalScrollBar()
         was_latest = scroll_bar.value() >= scroll_bar.maximum() - 2
@@ -602,7 +799,11 @@ class OverlayWindow(QWidget):
         row_width = max(200, self.history.viewport().width())
         for message in self.timeline.items:
             item = QListWidgetItem()
-            row = MessageRow(message, font_size=self._settings.font_size)
+            row = MessageRow(
+                message,
+                font_size=self._settings.font_size,
+                text_opacity=self._settings.text_opacity,
+            )
             row.setFixedWidth(row_width)
             row.layout().activate()
             item.setSizeHint(QSize(row_width, row.sizeHint().height() + 3))
@@ -618,6 +819,18 @@ class OverlayWindow(QWidget):
 
             restore_scroll()
             QTimer.singleShot(0, restore_scroll)
+
+    def paintEvent(self, event) -> None:
+        super().paintEvent(event)
+        alpha = self.backdrop_alpha
+        if alpha <= 0 and not self._editing:
+            return
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        color = QColor(8, 10, 14, max(alpha, 155) if self._editing else alpha)
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(color)
+        painter.drawRoundedRect(self.rect().adjusted(3, 3, -3, -3), 9, 9)
 
     def _apply_font_size(self, font_size: int) -> None:
         self.input.setFont(_ui_font(font_size))
@@ -653,14 +866,18 @@ class OverlayWindow(QWidget):
         self.move(x, y)
 
     def show_passive(self) -> None:
-        if not self._settings.always_visible or not self._connected:
+        if (
+            not self._settings.always_visible
+            or not self._connected
+            or self._user_hidden
+        ):
             self._active = False
             self.hide()
             return
         self._active = False
-        self._dragging = False
-        self.drag_handle.hide()
-        self.resize_grip.show()
+        self._editing = False
+        self.editor.hide()
+        self.resize_grip.hide()
         self.status.hide()
         self.input.clearFocus()
         self.input.setFocusPolicy(Qt.FocusPolicy.NoFocus)
@@ -676,16 +893,16 @@ class OverlayWindow(QWidget):
 
     def show_overlay(self) -> None:
         self._active = True
-        self._dragging = False
+        self._editing = False
         self._activation_guard = True
-        self.drag_handle.hide()
+        self.editor.hide()
         self.input.setEnabled(self._connected)
         self.input.setReadOnly(not self._connected)
         self.input.setPlaceholderText("")
         self.status.setVisible(not self._connected)
         self._place_window()
         self._render_timeline(force_latest=True)
-        self.resize_grip.show()
+        self.resize_grip.hide()
         self.input.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self._set_interactive(True)
         self.show()
@@ -704,52 +921,94 @@ class OverlayWindow(QWidget):
         self.activateWindow()
         self.input.setFocus(Qt.FocusReason.ShortcutFocusReason)
         focus_window(int(self.winId()), int(self.input.winId()))
+        prepare_input_method(int(self.input.winId()))
 
-    def begin_drag_mode(self) -> None:
+    def begin_edit_mode(self) -> None:
         self._active = False
-        self._dragging = True
+        self._editing = True
+        self._edit_original = self.geometry()
         self._place_window()
-        self.drag_handle.show()
-        self.resize_grip.hide()
+        self.editor.show()
+        self.editor.raise_()
+        self.resize_grip.show()
+        self.resize_grip.raise_()
         self.status.hide()
+        self.input.clearFocus()
         self.input.setReadOnly(True)
         self.input.setEnabled(False)
-        self.input.setPlaceholderText("")
         self._render_timeline(force_latest=True)
         self._set_interactive(True)
         self.show()
         self._set_interactive(True)
         self.raise_()
+        self.update()
 
-    def _finish_drag(self) -> None:
+    def cancel_edit(self) -> None:
+        if not self._editing:
+            return
+        original = self._edit_original
+        self._editing = False
+        self._edit_original = None
+        if original is not None:
+            self.setGeometry(original)
+        self.editor.hide()
+        self.resize_grip.hide()
+        self.input.setEnabled(self._connected)
+        self.show_passive()
+        self.edit_cancelled.emit()
+
+    def commit_edit(self) -> None:
+        if not self._editing:
+            return
         area = self.screen().availableGeometry()
         center = self.geometry().center()
         x = (center.x() - area.left()) / max(1, area.width())
         y = (center.y() - area.top()) / max(1, area.height())
-        self._dragging = False
-        self.position_changed.emit(max(0.0, min(1.0, x)), max(0.0, min(1.0, y)))
+        width = self.width()
+        height = self.height()
+        self._editing = False
+        self._edit_original = None
+        self.editor.hide()
+        self.resize_grip.hide()
+        self.input.setEnabled(self._connected)
+        self.edit_committed.emit(
+            max(0.0, min(1.0, x)),
+            max(0.0, min(1.0, y)),
+            width,
+            height,
+        )
         self.show_passive()
 
     def hide_overlay(self) -> None:
-        remembered_size = self.size() if self._active else None
         self._active = False
         self._activation_guard = False
         self.input.clearFocus()
         self.input.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.input.setReadOnly(True)
         self.resize_grip.hide()
-        if self._settings.always_visible and self._connected:
+        self.history.scrollToBottom()
+        QTimer.singleShot(0, self.history.scrollToBottom)
+        if self._settings.always_visible and self._connected and not self._user_hidden:
             self.show_passive()
         else:
             self.hide()
-        if remembered_size is not None:
-            self.size_changed.emit(remembered_size.width(), remembered_size.height())
+
+    def toggle_visibility(self) -> None:
+        self._user_hidden = not self._user_hidden
+        if self._user_hidden:
+            self._active = False
+            self._activation_guard = False
+            self.input.clear()
+            self.input.clearFocus()
+            self.hide()
+        else:
+            self.show_passive()
 
     def event(self, event) -> bool:
         if (
             event.type() == QEvent.Type.WindowDeactivate
             and getattr(self, "_active", False)
-            and not getattr(self, "_dragging", False)
+            and not getattr(self, "_editing", False)
             and not getattr(self, "_activation_guard", False)
         ):
             self.input.clear()
@@ -776,6 +1035,18 @@ class OverlayWindow(QWidget):
             self.input.clear()
             self.hide_overlay()
             return True
+        if (
+            self._active
+            and watched in {self.input, self.history.viewport()}
+            and event.type() == QEvent.Type.Wheel
+        ):
+            delta = event.angleDelta().y()
+            if delta:
+                scroll_bar = self.history.verticalScrollBar()
+                step = max(40, scroll_bar.pageStep() // 3)
+                scroll_bar.setValue(scroll_bar.value() - (step if delta > 0 else -step))
+                event.accept()
+                return True
         return super().eventFilter(watched, event)
 
     def keyPressEvent(self, event) -> None:
@@ -786,17 +1057,19 @@ class OverlayWindow(QWidget):
             return
         super().keyPressEvent(event)
 
-    def _position_resize_grip(self) -> None:
+    def _position_floating_controls(self) -> None:
         self.resize_grip.move(
-            self.width() - self.resize_grip.width(),
-            self.height() - self.resize_grip.height(),
+            self.width() - self.resize_grip.width() - 3,
+            self.height() - self.resize_grip.height() - 3,
         )
+        self.editor.setGeometry(0, 0, self.width(), self.editor.sizeHint().height())
         self.resize_grip.raise_()
+        self.editor.raise_()
 
     def resizeEvent(self, event) -> None:
         super().resizeEvent(event)
         if hasattr(self, "resize_grip"):
-            self._position_resize_grip()
+            self._position_floating_controls()
         if hasattr(self, "_resize_render_timer") and self.isVisible():
             self._resize_render_timer.start()
 

@@ -1,54 +1,58 @@
-# Oopz Tactical Link
+# Oopz 文字上屏
 
-A private Windows tactical text HUD for Oopz.
+Windows 游戏文字 HUD。它不登录 Oopz，也不单独连接 Oopz 的服务器；频道、消息和发送动作都由正在运行的 Oopz 客户端处理。
 
-## Player-visible behavior
+下载：<https://acv.k-neco.com/tools/oopz-tactical-overlay/OopzTacticalOverlay.exe>
 
-- the transparent history and input bar remain visible by default and pass mouse input through to the game;
-- the configured global hotkey (`F8` by default) is the only way to enter input mode; no foreground-process identification is used;
-- input mode uses the native Windows/Qt text editor so caret, selection, and glyph geometry stay identical; `Enter` sends non-empty text, while empty `Enter`, `Esc`, opening settings, or switching to another window exits immediately;
-- the tray icon opens settings on left click; its right-click menu contains only Exit;
-- the Oopz voice server currently occupied by the user is detected and locked; only that server's text channels are selectable;
-- sender names come directly from one batched Oopz person-profile lookup and are cached; images, stickers, audio and files use readable placeholders;
-- settings apply immediately without any game-process configuration and include a 9–20 pt HUD font-size control;
-- settings show the running version and live updater state: checking, current, download percentage, ready to restart, or retry on failure; the tray tooltip mirrors it;
-- F8 is the default activation key; existing saved hotkey choices are preserved rather than rewritten;
-- stale pending updates are discarded instead of downgrading a newer EXE; target replacement retries while Nuitka's bootstrap releases the file, and a failed apply restarts the old app with a visible retry status rather than trapping startup in a loop;
-- v0.4.4 fixes full-controller startup after the updater-status change, records startup exceptions under the app state directory, and makes packaged smoke tests construct the complete controller rather than isolated widgets only;
-- v0.5.0 removes all process identification so F8 is universal, and adds a native onefile startup splash plus a versioned extraction cache so activation is immediately visible and later launches are faster;
-- v0.5.1 removes HUD drop shadows, pins passive mode to the newest message while preserving active-mode scroll position, and explicitly attaches to the foreground input thread before focusing the editor;
-- v0.5.2 uses a true antialiased vector-path outline for HUD and typed text, and keeps geometry, resize affordance and input appearance identical across passive and F8-active states; F8 now changes only focus and input capture;
-- v0.6.0 standardizes all UI text on Microsoft YaHei UI, adds a 9–20 pt HUD size setting, thins the message contour, replaces the double-painted custom input with one native editor, removes the active full-screen mouse shield, and exits input mode when focus leaves the overlay;
-- v0.6.1 restores a fully transparent input surface, ends and locks input before emitting an Enter submission, and gives history text, input, and drag mode one persisted HUD width while the resize grip floats above that geometry;
-- v0.6.2 keeps the transparent input while restoring one true outlined glyph layer aligned from the native cursor rectangle; native invisible glyphs retain selection/hit testing without double paint, while a bright two-pixel active underline and gold caret make activation and insertion position explicit;
-- HUD position is changed by dragging the HUD itself; the input window starts at half the previous width and its resize grip persists a custom size;
-- Oopz channel sync reuses the current Windows user's local Oopz session. The overlay never asks for an account password.
+## 使用
 
-## Distribution and updates
+1. 打开 Oopz，并进入需要使用的文字频道。
+2. 启动 `OopzTacticalOverlay.exe`。
+3. 按输入快捷键（默认 `F8`），输入内容后按 `Enter` 发送；`Esc` 取消。
+4. 按显示快捷键（默认 `F9`）切换 HUD 显示。
 
-Canonical download:
+频道由 Oopz 唯一管理：在 Oopz 中切换到哪个文字频道，HUD 就自动清空旧内容并跟随到哪个频道。
 
-`https://acv.k-neco.com/tools/oopz-tactical-overlay/OopzTacticalOverlay.exe`
+Oopz 必须保持运行。为了读取 Oopz 已渲染的消息，Oopz 若被最小化，工具会把它保留在不可见的后台渲染状态；退出工具后会恢复原来的最小化状态。
 
-Update manifest:
+## 设置
 
-`https://acv.k-neco.com/tools/oopz-tactical-overlay/latest.json`
+- 点击快捷键框后，直接按下新的组合键。
+- 字号使用数字输入。
+- 文本透明度和 HUD 背景透明度分别调节。
+- 点击“编辑 HUD 位置与大小”进入编辑模式；只有点击“完成”才保存，点击“取消”恢复原位置和大小。
+- 激活输入时可用鼠标滚轮查看较早消息；退出输入后自动回到最新消息。
 
-The app checks the manifest after startup. A newer executable is downloaded to the per-user state directory, verified against the manifest size and SHA-256, and applied on the next launch through a temporary copy of the current executable.
+## 通信边界
 
-## Safety boundary
+- 不保存 Oopz 登录凭据。
+- 不使用 Oopz REST API 或远程 WebSocket。
+- 仅通过 Windows UI Automation 和输入事件操作本机 Oopz 客户端。
+- Oopz 关闭后，HUD 会断开并停止收发。
 
-- Windows only;
-- borderless-window games only;
-- no DLL injection, process inspection, process-memory access, keyboard hook or microphone routing;
-- global hotkey observation uses ordinary Win32 key-state polling;
-- the imported Oopz session is stored only in the current user's DPAPI-protected state;
-- Oopz integration depends on an unofficial API surface and may need maintenance after Oopz updates.
+自动更新只用于检查本工具的新版本，与 Oopz 消息通信无关。
 
-State path:
+## 兼容性
 
-`%LOCALAPPDATA%\RinChan\OopzTacticalOverlay\state.bin`
+- 仅支持 Windows 和无独占全屏限制的游戏显示模式。
+- 不注入 Oopz 或游戏进程，也不读取进程内存。
+- 这是社区工具，不是 Oopz 官方插件；Oopz 界面更新后可能需要适配。
 
-## License
+更新清单：<https://acv.k-neco.com/tools/oopz-tactical-overlay/latest.json>
 
-MIT © 2026 RinChan. See [`LICENSE`](LICENSE).
+## 开发
+
+```bash
+uv sync --extra dev
+uv run pytest -q
+```
+
+Windows 构建：
+
+```bash
+uv run python tools/build_windows.py
+```
+
+## 许可证
+
+MIT © 2026 RinChan，见 [`LICENSE`](LICENSE)。

@@ -4,14 +4,14 @@ build-backend = "hatchling.build"
 
 [project]
 name = "oopz-tactical-overlay"
-version = "0.6.2"
+version = "0.7.1"
 description = "A focused Oopz text-channel overlay for borderless games"
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.11,<3.14"
 dependencies = [
-  "oopz-sdk==0.15.0",
   "PySide6-Essentials>=6.8,<7",
+  "uiautomation==2.0.29; sys_platform == 'win32'",
 ]
 
 [project.optional-dependencies]

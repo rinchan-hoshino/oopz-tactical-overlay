@@ -4,8 +4,8 @@ import pytest
 
 pytest.importorskip("PySide6")
 
-from PySide6.QtCore import QEvent, Qt
-from PySide6.QtGui import QKeyEvent, QPalette
+from PySide6.QtCore import QEvent, QPoint, QPointF, Qt
+from PySide6.QtGui import QKeyEvent, QPalette, QWheelEvent
 from PySide6.QtWidgets import QApplication
 
 from oopz_overlay.chat import ChatMessage
@@ -30,7 +30,7 @@ def test_overlay_keeps_the_window_background_transparent(monkeypatch) -> None:
     window.set_connection_status("#塔科夫战术", True)
     app.processEvents()
     passive_size = window.size()
-    assert window.resize_grip.isVisible()
+    assert not window.resize_grip.isVisible()
 
     window.show_overlay()
     app.processEvents()
@@ -43,13 +43,13 @@ def test_overlay_keeps_the_window_background_transparent(monkeypatch) -> None:
     input_line = window.input.mapTo(window, input_line_local)
 
     assert blank.alpha() == 0
-    assert image.pixelColor(input_center).alpha() == 0
-    assert image.pixelColor(input_line).alpha() > 0
+    assert image.pixelColor(input_center).alpha() == window.backdrop_alpha
+    assert image.pixelColor(input_line).alpha() > window.backdrop_alpha
     assert window.size() == passive_size
     assert window.height() <= 165
     assert window.width() <= 360
     assert not hasattr(window, "shield")
-    assert window.resize_grip.isVisible()
+    assert not window.resize_grip.isVisible()
     assert isinstance(window.input, OutlinedLineEdit)
     assert window.input.hasFocus()
     assert focused
@@ -161,7 +161,7 @@ def test_passive_history_is_visible_but_click_through() -> None:
     assert window.input.isEnabled()
     assert window.input.isReadOnly()
     assert window.input.focusPolicy() == Qt.FocusPolicy.NoFocus
-    assert window.resize_grip.isVisible()
+    assert not window.resize_grip.isVisible()
     assert window.testAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
     passive_size = window.size()
 
@@ -200,14 +200,86 @@ def test_history_input_and_drag_surface_share_one_persisted_width() -> None:
     assert window.width() == 500
     assert window.history.width() == window.input.width()
 
-    window.begin_drag_mode()
+    window.begin_edit_mode()
     app.processEvents()
     assert window.width() == 500
-    assert window.drag_handle.width() == window.history.width()
-    assert window.drag_handle.width() == window.input.width()
+    assert window.editor.width() == window.width()
+    assert window.history.width() == window.input.width()
+    window.cancel_edit()
 
     window.configure(AppSettings(always_visible=False))
     window.hide_overlay()
+
+
+def test_text_and_backdrop_opacity_apply_to_the_hud() -> None:
+    app = QApplication.instance() or QApplication([])
+    window = OverlayWindow()
+    window.configure(
+        AppSettings(
+            always_visible=True,
+            text_opacity=55,
+            backdrop_opacity=40,
+        )
+    )
+    window.merge_messages([ChatMessage("1", 1, "u", "风屿", "二楼一个", False)])
+    window.set_connection_status("#塔科夫战术", True)
+    app.processEvents()
+
+    row = window.history.itemWidget(window.history.item(0))
+    assert row is not None
+    labels = row.findChildren(OutlinedLabel)
+    assert all(
+        label.palette().color(QPalette.ColorRole.WindowText).alpha() == 140
+        for label in labels
+    )
+    assert window.backdrop_alpha == 102
+
+    window.configure(AppSettings(always_visible=False))
+    window.hide()
+
+
+def test_edit_mode_stages_position_and_size_until_done_or_cancel() -> None:
+    app = QApplication.instance() or QApplication([])
+    window = OverlayWindow()
+    window.configure(
+        AppSettings(
+            always_visible=True,
+            position_x=0.5,
+            position_y=0.5,
+            overlay_width=420,
+            overlay_height=220,
+        )
+    )
+    window.set_connection_status("#塔科夫战术", True)
+    app.processEvents()
+    original = window.geometry()
+    committed: list[tuple[float, float, int, int]] = []
+    cancelled: list[bool] = []
+    window.edit_committed.connect(lambda *values: committed.append(values))
+    window.edit_cancelled.connect(lambda: cancelled.append(True))
+
+    window.begin_edit_mode()
+    window.move(window.x() + 40, window.y() - 30)
+    window.resize(500, 260)
+    window.editor.cancel_button.click()
+    app.processEvents()
+
+    assert cancelled == [True]
+    assert committed == []
+    assert window.geometry() == original
+
+    window.begin_edit_mode()
+    window.move(window.x() + 20, window.y() - 10)
+    window.resize(480, 250)
+    window.editor.done_button.click()
+    app.processEvents()
+
+    assert len(committed) == 1
+    assert committed[0][2:] == (480, 250)
+    assert not window.is_editing
+
+    window.configure(AppSettings(always_visible=False))
+    window.hide()
 
 
 def test_font_size_setting_updates_messages_and_the_native_input_editor() -> None:
@@ -224,6 +296,76 @@ def test_font_size_setting_updates_messages_and_the_native_input_editor() -> Non
     assert all(label.font().pointSize() == 18 for label in labels)
     assert window.input.font().family() == "Microsoft YaHei UI"
     assert window.input.font().pointSize() == 18
+
+    window.configure(AppSettings(always_visible=False))
+    window.hide()
+
+
+def test_activation_prepares_ime_and_wheel_scrolls_then_exit_returns_to_latest(
+    monkeypatch,
+) -> None:
+    app = QApplication.instance() or QApplication([])
+    prepared: list[int] = []
+    monkeypatch.setattr(
+        "oopz_overlay.widgets.prepare_input_method",
+        lambda input_id: prepared.append(input_id) or True,
+    )
+    window = OverlayWindow()
+    window.configure(
+        AppSettings(always_visible=True, overlay_width=260, overlay_height=135)
+    )
+    window.merge_messages(
+        [
+            ChatMessage(str(index), index, "u", "风屿", f"第 {index} 条", False)
+            for index in range(30)
+        ]
+    )
+    window.set_connection_status("#塔科夫战术", True)
+    window.show_overlay()
+    app.processEvents()
+
+    scroll_bar = window.history.verticalScrollBar()
+    assert prepared
+    assert scroll_bar.value() == scroll_bar.maximum()
+    QApplication.sendEvent(
+        window.input,
+        QWheelEvent(
+            QPointF(10, 10),
+            QPointF(10, 10),
+            QPoint(0, 0),
+            QPoint(0, 120),
+            Qt.MouseButton.NoButton,
+            Qt.KeyboardModifier.NoModifier,
+            Qt.ScrollPhase.ScrollUpdate,
+            False,
+        ),
+    )
+    app.processEvents()
+    assert scroll_bar.value() < scroll_bar.maximum()
+
+    window.hide_overlay()
+    app.processEvents()
+    assert scroll_bar.value() == scroll_bar.maximum()
+
+    window.configure(AppSettings(always_visible=False))
+    window.hide()
+
+
+def test_visibility_toggle_hides_and_restores_passive_hud() -> None:
+    app = QApplication.instance() or QApplication([])
+    window = OverlayWindow()
+    window.configure(AppSettings(always_visible=True))
+    window.set_connection_status("#塔科夫战术", True)
+    app.processEvents()
+    assert window.isVisible()
+
+    window.toggle_visibility()
+    app.processEvents()
+    assert window.isHidden()
+
+    window.toggle_visibility()
+    app.processEvents()
+    assert window.isVisible()
 
     window.configure(AppSettings(always_visible=False))
     window.hide()

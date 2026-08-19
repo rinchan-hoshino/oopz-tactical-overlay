@@ -4,7 +4,9 @@ pytest.importorskip("PySide6")
 
 from PySide6.QtWidgets import QApplication
 
+from oopz_overlay.chat import ChatMessage
 from oopz_overlay.main import AppController, _close_onefile_splash
+from oopz_overlay.settings import AppSettings
 
 
 def test_app_controller_constructs_with_owned_state_root(tmp_path, monkeypatch) -> None:
@@ -16,7 +18,7 @@ def test_app_controller_constructs_with_owned_state_root(tmp_path, monkeypatch) 
     app.processEvents()
     assert controller.state_root == tmp_path / "RinChan" / "OopzTacticalOverlay"
     assert controller.tray.isVisible()
-    assert controller._update_status == "更新 // 等待自动检查"
+    assert controller._update_status == "等待检查更新"
 
     controller.overlay.set_connection_status("#塔科夫", True)
     controller.overlay.show_overlay()
@@ -27,7 +29,11 @@ def test_app_controller_constructs_with_owned_state_root(tmp_path, monkeypatch) 
     assert not controller.overlay.is_active
     assert controller.setup_dialog is not None
     assert controller.setup_dialog.isVisible()
-    monkeypatch.setattr(controller.monitor, "hotkey_pressed", lambda hotkey: True)
+    monkeypatch.setattr(
+        controller.monitor,
+        "hotkey_pressed",
+        lambda hotkey: hotkey == controller.settings.hotkey,
+    )
     controller._poll_hotkey()
     app.processEvents()
     assert controller.overlay.is_active
@@ -35,6 +41,45 @@ def test_app_controller_constructs_with_owned_state_root(tmp_path, monkeypatch) 
 
     controller.overlay.hide_overlay()
     controller.setup_dialog.close()
+    controller.shutdown()
+    app.processEvents()
+
+
+def test_oopz_channel_change_clears_old_timeline_without_local_selection(
+    tmp_path, monkeypatch
+) -> None:
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
+    app = QApplication.instance() or QApplication([])
+    controller = AppController(app)
+    controller.overlay.merge_messages(
+        [ChatMessage("old", 1, "u", "风屿", "旧频道消息", False)]
+    )
+
+    controller._channel_changed("新频道")
+
+    assert controller.overlay.timeline.items == ()
+    assert controller.current_channel == "新频道"
+    controller.shutdown()
+    app.processEvents()
+
+
+def test_visibility_hotkey_toggles_the_passive_hud(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
+    app = QApplication.instance() or QApplication([])
+    controller = AppController(app)
+    controller.settings = AppSettings(hotkey="F8", visibility_hotkey="F9")
+    controller.overlay.configure(controller.settings)
+    controller.overlay.set_connection_status("#塔科夫", True)
+    monkeypatch.setattr(
+        controller.monitor,
+        "hotkey_pressed",
+        lambda hotkey: hotkey == "F9",
+    )
+
+    controller._poll_hotkey()
+    app.processEvents()
+
+    assert controller.overlay.isHidden()
     controller.shutdown()
     app.processEvents()
 

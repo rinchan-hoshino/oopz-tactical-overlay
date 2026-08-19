@@ -26,18 +26,22 @@ def test_global_monitor_edges_key_state_without_any_process_match() -> None:
             return 0x8000 if key in self.down else 0
 
     monitor = object.__new__(GlobalHotkeyMonitor)
-    monitor._was_hotkey_down = False
-    monitor._hotkey_text = ""
-    monitor._hotkey = parse_hotkey("F8")
+    monitor._states = {}
+    monitor._specs = {}
     monitor._user32 = User32()
 
     monitor._user32.down = {0x77}
     assert monitor.hotkey_pressed("F8")
     assert not monitor.hotkey_pressed("F8")
+    assert not monitor.hotkey_pressed("F9")
     monitor._user32.down = set()
     assert not monitor.hotkey_pressed("F8")
     monitor._user32.down = {0x77}
     assert monitor.hotkey_pressed("F8")
+
+    monitor._user32.down = {0x78}
+    assert monitor.hotkey_pressed("F9")
+    assert not monitor.hotkey_pressed("F9")
 
 
 def test_parse_hotkey_normalizes_letters_and_rejects_ambiguous_sequences() -> None:
@@ -45,5 +49,7 @@ def test_parse_hotkey_normalizes_letters_and_rejects_ambiguous_sequences() -> No
 
     with pytest.raises(ValueError, match="只能包含一个主按键"):
         parse_hotkey("A+B")
+    assert parse_hotkey("Ctrl+Delete") == HotkeySpec(key=0x2E, ctrl=True)
+
     with pytest.raises(ValueError, match="支持"):
-        parse_hotkey("Ctrl+Delete")
+        parse_hotkey("Ctrl+BrowserBack")

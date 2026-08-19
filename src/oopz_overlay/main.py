@@ -18,8 +18,7 @@ from PySide6.QtWidgets import (
 from . import __version__
 from .chat import ChatMessage
 from .dpapi import WindowsDpapiProtector
-from .gateway import GatewayCallbacks, GatewayRuntime, LoginResult
-from .local_session import LocalSessionError, load_oopz_local_session
+from .gateway import GatewayCallbacks, GatewayRuntime
 from .settings import AppSettings, JsonSettingsStore
 from .updater import (
     UpdateProgress,
@@ -37,7 +36,7 @@ class Bridge(QObject):
     timeline = Signal(object)
     status = Signal(str, bool)
     error = Signal(str)
-    login_result = Signal(object)
+    channel_changed = Signal(str)
     update_ready = Signal(str)
     update_progress = Signal(object)
 
@@ -58,7 +57,7 @@ class AppController(QObject):
             self.settings = self.store.load()
         except (OSError, ValueError, UnicodeError):
             self.settings = AppSettings()
-        self._connected_key = ("", "", "")
+        self.current_channel = ""
         self.overlay.configure(self.settings)
 
         self.monitor = GlobalHotkeyMonitor()
@@ -67,22 +66,23 @@ class AppController(QObject):
                 timeline=self.bridge.timeline.emit,
                 status=self.bridge.status.emit,
                 error=self.bridge.error.emit,
+                channel=self.bridge.channel_changed.emit,
             )
         )
 
         self.bridge.timeline.connect(self.overlay.merge_messages)
         self.bridge.status.connect(self.overlay.set_connection_status)
         self.bridge.error.connect(self._on_error)
-        self.bridge.login_result.connect(self._on_login_result)
+        self.bridge.channel_changed.connect(self._channel_changed)
         self.bridge.update_ready.connect(self._on_update_ready)
         self.bridge.update_progress.connect(self._on_update_progress)
         self.overlay.send_requested.connect(self.gateway.send)
-        self.overlay.position_changed.connect(self._position_changed)
-        self.overlay.size_changed.connect(self._size_changed)
+        self.overlay.edit_committed.connect(self._edit_committed)
+        self.overlay.edit_cancelled.connect(self._edit_cancelled)
 
-        self._update_status = "更新 // 等待自动检查"
+        self._update_status = "等待检查更新"
         if (self.state_root / "update-error.json").is_file():
-            self._update_status = "更新 // 上次应用失败，已恢复运行并会重试"
+            self._update_status = "上次更新失败，本次启动后会重试"
         self.tray = QSystemTrayIcon(self._icon(), self)
         self._update_tray_tooltip()
         menu = QMenu()
@@ -99,10 +99,7 @@ class AppController(QObject):
 
         QTimer.singleShot(1800, self._check_update)
 
-        if self.settings.is_ready:
-            self._import_session()
-        else:
-            QTimer.singleShot(0, self.open_settings)
+        QTimer.singleShot(80, self._connect_current)
 
     @staticmethod
     def _state_root() -> Path:
@@ -130,7 +127,10 @@ class AppController(QObject):
         return QIcon(pixmap)
 
     def _poll_hotkey(self) -> None:
-        if self.overlay.is_active:
+        if self.overlay.is_active or self.overlay.is_editing:
+            return
+        if self.monitor.hotkey_pressed(self.settings.visibility_hotkey):
+            self.overlay.toggle_visibility()
             return
         if self.monitor.hotkey_pressed(self.settings.hotkey):
             if self.setup_dialog is not None:
@@ -138,15 +138,9 @@ class AppController(QObject):
             self.overlay.show_overlay()
 
     def _connect_current(self) -> None:
-        self.overlay.set_connection_status(
-            f"正在连接 #{self.settings.channel_name}…", False
-        )
-        self._connected_key = (
-            self.settings.person_uid,
-            self.settings.area_id,
-            self.settings.channel_id,
-        )
-        self.gateway.connect(self.settings)
+        self.overlay.clear_messages()
+        self.overlay.set_connection_status("正在连接 Oopz…", False)
+        self.gateway.connect()
 
     def open_settings(self) -> None:
         if self.overlay.is_active:
@@ -156,84 +150,65 @@ class AppController(QObject):
             self.setup_dialog.activateWindow()
             return
         dialog = SetupDialog(self.settings)
-        dialog.session_requested.connect(self._import_session)
         dialog.settings_changed.connect(self._configured)
-        dialog.drag_requested.connect(self._begin_drag)
+        dialog.edit_requested.connect(self._begin_edit)
         dialog.finished.connect(self._setup_finished)
         self.setup_dialog = dialog
         dialog.set_update_status(self._update_status)
+        dialog.set_current_channel(
+            self.current_channel,
+            connected=bool(self.current_channel),
+        )
         dialog.show()
         dialog.raise_()
         dialog.activateWindow()
 
-    def _import_session(self) -> None:
-        try:
-            settings = load_oopz_local_session()
-        except LocalSessionError as exc:
-            if self.setup_dialog is not None:
-                self.setup_dialog.show_error(str(exc))
-            return
-        current = replace(
-            self.settings,
-            device_id=settings.device_id,
-            person_uid=settings.person_uid,
-            jwt_token=settings.jwt_token,
-            app_version=settings.app_version,
-        )
-        self.gateway.inspect_session(current, success=self.bridge.login_result.emit)
-
-    def _on_login_result(self, result: LoginResult) -> None:
-        if self.setup_dialog is not None and self.setup_dialog.isVisible():
-            self.setup_dialog.apply_login_result(result)
-            return
-
-        selected = next(
-            (
-                item
-                for item in result.destinations
-                if item.channel_id == result.settings.channel_id
-            ),
-            result.destinations[0] if result.destinations else None,
-        )
-        settings = result.settings
-        if selected is not None:
-            settings = replace(
-                settings,
-                area_id=selected.area_id,
-                area_name=selected.area_name,
-                channel_id=selected.channel_id,
-                channel_name=selected.channel_name,
-            )
-        self._configured(settings)
-
     def _configured(self, settings: AppSettings) -> None:
-        next_connection = (
-            settings.person_uid,
-            settings.area_id,
-            settings.channel_id,
-        )
         self.settings = settings
         self.store.save(settings)
         self.overlay.configure(settings)
-        if settings.is_ready and next_connection != self._connected_key:
-            self._connect_current()
-        elif not settings.is_ready:
-            self._connected_key = ("", "", "")
-            self.gateway.disconnect()
-            self.overlay.set_connection_status("未检测到当前服务器", False)
 
-    def _begin_drag(self) -> None:
+    def _channel_changed(self, channel_name: str) -> None:
+        if channel_name == self.current_channel:
+            return
+        self.current_channel = channel_name
+        self.overlay.clear_messages()
+        if channel_name:
+            self.overlay.set_connection_status(f"#{channel_name}", True)
         if self.setup_dialog is not None:
-            self.setup_dialog.close()
-        self.overlay.begin_drag_mode()
+            self.setup_dialog.set_current_channel(
+                channel_name,
+                connected=bool(channel_name),
+            )
 
-    def _position_changed(self, x: float, y: float) -> None:
-        self._configured(replace(self.settings, position_x=x, position_y=y))
+    def _begin_edit(self) -> None:
+        self.overlay.begin_edit_mode()
 
-    def _size_changed(self, width: int, height: int) -> None:
+    def _edit_committed(
+        self,
+        x: float,
+        y: float,
+        width: int,
+        height: int,
+    ) -> None:
         self._configured(
-            replace(self.settings, overlay_width=width, overlay_height=height)
+            replace(
+                self.settings,
+                position_x=x,
+                position_y=y,
+                overlay_width=width,
+                overlay_height=height,
+            )
         )
+        if self.setup_dialog is not None:
+            self.setup_dialog.sync_settings(self.settings)
+            self.setup_dialog.show()
+            self.setup_dialog.raise_()
+
+    def _edit_cancelled(self) -> None:
+        if self.setup_dialog is not None:
+            self.setup_dialog.show()
+            self.setup_dialog.raise_()
 
     def _setup_finished(self) -> None:
         self.setup_dialog = None
@@ -248,10 +223,6 @@ class AppController(QObject):
             QSystemTrayIcon.MessageIcon.Warning,
             5000,
         )
-        if "重新登录" in text and (
-            self.setup_dialog is None or not self.setup_dialog.isVisible()
-        ):
-            QTimer.singleShot(0, self.open_settings)
 
     def _tray_activated(self, reason: QSystemTrayIcon.ActivationReason) -> None:
         if reason == QSystemTrayIcon.ActivationReason.Trigger:
@@ -278,16 +249,16 @@ class AppController(QObject):
 
     def _on_update_progress(self, progress: UpdateProgress) -> None:
         if progress.phase == "checking":
-            text = "更新 // 正在检查…"
+            text = "正在检查更新"
         elif progress.phase == "current":
-            text = f"更新 // 已是最新版 v{progress.version}"
+            text = f"已是最新版 v{progress.version}"
         elif progress.phase == "downloading":
             percent = min(100, progress.downloaded * 100 // max(1, progress.total))
-            text = f"更新 // 正在下载 v{progress.version} · {percent}%"
+            text = f"正在下载 v{progress.version} · {percent}%"
         elif progress.phase == "ready":
-            text = f"更新 // v{progress.version} 已下载，重启后应用"
+            text = f"v{progress.version} 已下载，重启后更新"
         else:
-            text = "更新 // 检查失败，下次启动重试"
+            text = "检查更新失败，下次启动重试"
         self._update_status = text
         if progress.phase in {"current", "ready"}:
             (self.state_root / "update-error.json").unlink(missing_ok=True)
@@ -320,13 +291,18 @@ def _demo_overlay() -> OverlayWindow:
     overlay.merge_messages(
         [
             ChatMessage(
-                "demo-1", 1_775_000_000_000_000, "user-1", "澪子", "二楼窗口一个", False
+                "demo-1",
+                1_775_000_000_000_000,
+                "user-1",
+                "队友A",
+                "二楼窗口一个",
+                False,
             ),
             ChatMessage(
                 "demo-2",
                 1_775_000_005_000_000,
                 "user-2",
-                "黑夜",
+                "玩家",
                 "收到，我绕右侧",
                 True,
             ),
@@ -334,7 +310,7 @@ def _demo_overlay() -> OverlayWindow:
                 "demo-3",
                 1_775_000_009_000_000,
                 "user-1",
-                "澪子",
+                "队友A",
                 "等一下，楼梯有脚步",
                 False,
             ),
@@ -372,11 +348,7 @@ def _smoke_test(app: QApplication) -> int:
             Path(directory) / "state.bin",
             WindowsDpapiProtector(),
         )
-        expected = AppSettings(
-            device_id="device",
-            person_uid="person",
-            jwt_token="secret",
-        )
+        expected = AppSettings()
         store.save(expected)
         if store.load() != expected:
             return 4
@@ -427,8 +399,10 @@ def main() -> int:
     app.setStyle("Fusion")
     app.setFont(QFont(FONT_FAMILY))
     if "--smoke-test" in sys.argv:
+        _close_onefile_splash()
         return _smoke_test(app)
     if "--render-preview" in sys.argv:
+        _close_onefile_splash()
         index = sys.argv.index("--render-preview")
         if index + 1 >= len(sys.argv):
             return 6
