@@ -44,8 +44,10 @@ class LoginResult:
 @dataclass(slots=True)
 class GatewayCallbacks:
     timeline: Callable[[list[ChatMessage]], None]
+    live_timeline: Callable[[list[ChatMessage]], None]
     status: Callable[[str, bool], None]
     error: Callable[[str], None]
+    send_error: Callable[[str], None]
 
 
 class GatewayRuntime:
@@ -77,6 +79,7 @@ class GatewayRuntime:
         coroutine: Coroutine[Any, Any, Any],
         *,
         success: Callable[[Any], None] | None = None,
+        error: Callable[[str], None] | None = None,
     ) -> None:
         future = asyncio.run_coroutine_threadsafe(coroutine, self._loop)
 
@@ -84,7 +87,7 @@ class GatewayRuntime:
             try:
                 value = result_future.result()
             except Exception as exc:  # noqa: BLE001 - third-party coroutine boundary
-                self.callbacks.error(self._friendly_error(exc))
+                (error or self.callbacks.error)(self._friendly_error(exc))
                 return
             if success is not None:
                 success(value)
@@ -288,7 +291,7 @@ class GatewayRuntime:
         ):
             return
         await self._resolve_names([message])
-        self.callbacks.timeline(
+        self.callbacks.live_timeline(
             [
                 map_message(
                     message,
@@ -299,7 +302,7 @@ class GatewayRuntime:
         )
 
     def send(self, text: str) -> None:
-        self._submit(self._send(text))
+        self._submit(self._send(text), error=self.callbacks.send_error)
 
     async def _send(self, text: str) -> None:
         if self._rest is None:

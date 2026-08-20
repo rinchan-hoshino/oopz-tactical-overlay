@@ -120,6 +120,23 @@ def test_message_text_uses_yahai_and_a_thin_outline_without_shadow_effects() -> 
     assert _outline_width_for_font(labels[0].font()) <= 1.5
 
 
+def test_only_live_messages_receive_a_short_fading_highlight() -> None:
+    app = QApplication.instance() or QApplication([])
+    window = OverlayWindow()
+    window.merge_messages([ChatMessage("history", 1, "u", "风屿", "历史", False)])
+    window.merge_live_messages([ChatMessage("live", 2, "u", "风屿", "新消息", False)])
+    app.processEvents()
+
+    history = window.history.itemWidget(window.history.item(0))
+    live = window.history.itemWidget(window.history.item(1))
+    assert history.highlight_alpha == 0
+    assert live.highlight_alpha > 0
+
+    QTest.qWait(1600)
+    assert live.highlight_alpha == 0
+    window.hide()
+
+
 def test_passive_always_tracks_latest_while_active_preserves_scroll() -> None:
     app = QApplication.instance() or QApplication([])
     window = OverlayWindow()
@@ -419,6 +436,40 @@ def test_visibility_toggle_hides_and_restores_passive_hud() -> None:
     assert window.isVisible()
 
     window.configure(AppSettings(always_visible=False))
+    window.hide()
+
+
+def test_submit_and_escape_restore_the_window_that_owned_focus_before_activation(
+    monkeypatch,
+) -> None:
+    app = QApplication.instance() or QApplication([])
+    foreground = iter((9001, 9002))
+    restored: list[int] = []
+    monkeypatch.setattr(
+        "oopz_overlay.widgets.foreground_window",
+        lambda: next(foreground),
+    )
+    monkeypatch.setattr("oopz_overlay.widgets.restore_window", restored.append)
+    window = OverlayWindow()
+    window.set_connection_status("#塔科夫战术", True)
+
+    window.show_overlay()
+    window.input.setText("收到")
+    window._submit()
+    app.processEvents()
+    assert restored == [9001]
+
+    window.show_overlay()
+    QApplication.sendEvent(
+        window.input,
+        QKeyEvent(
+            QEvent.Type.KeyPress,
+            Qt.Key.Key_Escape,
+            Qt.KeyboardModifier.NoModifier,
+        ),
+    )
+    app.processEvents()
+    assert restored == [9001, 9002]
     window.hide()
 
 

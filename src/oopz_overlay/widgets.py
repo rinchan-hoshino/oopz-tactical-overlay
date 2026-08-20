@@ -5,6 +5,7 @@ import os
 from ctypes import wintypes
 from dataclasses import replace
 from datetime import UTC, datetime
+from time import monotonic
 
 from PySide6.QtCore import (
     QAbstractAnimation,
@@ -17,6 +18,7 @@ from PySide6.QtCore import (
     QSize,
     Qt,
     QTimer,
+    QVariantAnimation,
     Signal,
 )
 from PySide6.QtGui import (
@@ -61,8 +63,10 @@ from .win32_input import (
     WM_HOTKEY,
     ensure_window_topmost,
     focus_window,
+    foreground_window,
     parse_hotkey,
     prepare_input_method,
+    restore_window,
     set_window_click_through,
 )
 
@@ -681,10 +685,21 @@ class MessageRow(QWidget):
         message: ChatMessage,
         font_size: int = 12,
         text_opacity: int = 100,
+        highlight: bool = False,
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
+        self._highlight_alpha = 0
+        self._highlight_animation = QVariantAnimation(self)
+        self._highlight_animation.setDuration(1400)
+        self._highlight_animation.setEasingCurve(QEasingCurve.Type.OutCubic)
+        self._highlight_animation.valueChanged.connect(self._set_highlight_alpha)
+        if highlight:
+            self._highlight_alpha = 92
+            self._highlight_animation.setStartValue(92)
+            self._highlight_animation.setEndValue(0)
+            self._highlight_animation.start()
         layout = QHBoxLayout(self)
         layout.setContentsMargins(3, 1, 3, 1)
         layout.setSpacing(6)
@@ -719,6 +734,24 @@ class MessageRow(QWidget):
         layout.addWidget(text, 0, Qt.AlignmentFlag.AlignTop)
         layout.addStretch(1)
 
+    @property
+    def highlight_alpha(self) -> int:
+        return self._highlight_alpha
+
+    def _set_highlight_alpha(self, value) -> None:
+        self._highlight_alpha = int(value)
+        self.update()
+
+    def paintEvent(self, event) -> None:
+        if self._highlight_alpha:
+            painter = QPainter(self)
+            painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+            painter.setPen(Qt.PenStyle.NoPen)
+            painter.setBrush(QColor(226, 195, 111, self._highlight_alpha))
+            painter.drawRoundedRect(self.rect().adjusted(1, 0, -1, 0), 5, 5)
+            painter.end()
+        super().paintEvent(event)
+
 
 class OverlayWindow(QWidget):
     send_requested = Signal(str)
@@ -748,6 +781,8 @@ class OverlayWindow(QWidget):
         self._user_hidden = False
         self._edit_original = None
         self._activation_guard = False
+        self._return_window_id = 0
+        self._highlight_until: dict[str, float] = {}
         self.setMinimumSize(260, 135)
         self._resize_render_timer = QTimer(self)
         self._resize_render_timer.setSingleShot(True)
@@ -836,6 +871,10 @@ class OverlayWindow(QWidget):
         return self._editing
 
     @property
+    def is_connected(self) -> bool:
+        return self._connected
+
+    @property
     def backdrop_alpha(self) -> int:
         return round(255 * self._settings.backdrop_opacity / 100)
 
@@ -873,13 +912,34 @@ class OverlayWindow(QWidget):
             return
         self._render_timeline()
 
+    def merge_live_messages(self, messages: list[ChatMessage]) -> None:
+        known_ids = {message.message_id for message in self.timeline.items}
+        if not self.timeline.merge(messages):
+            return
+        expires = monotonic() + 1.4
+        self._highlight_until.update(
+            {
+                message.message_id: expires
+                for message in messages
+                if message.message_id and message.message_id not in known_ids
+            }
+        )
+        self._render_timeline()
+
     def clear_messages(self) -> None:
         self.timeline = ChatTimeline(limit=80)
+        self._highlight_until.clear()
         self._stop_scroll_animation()
         self.history.clear()
         self._scroll_target = 0
 
     def _render_timeline(self, *, force_latest: bool = False) -> None:
+        now = monotonic()
+        self._highlight_until = {
+            message_id: expires
+            for message_id, expires in self._highlight_until.items()
+            if expires > now
+        }
         scroll_bar = self.history.verticalScrollBar()
         if hasattr(self, "_scroll_animation"):
             self._scroll_animation.stop()
@@ -893,6 +953,7 @@ class OverlayWindow(QWidget):
                 message,
                 font_size=self._settings.font_size,
                 text_opacity=self._settings.text_opacity,
+                highlight=message.message_id in self._highlight_until,
             )
             row.setFixedWidth(row_width)
             row.layout().activate()
@@ -1039,6 +1100,10 @@ class OverlayWindow(QWidget):
         self._restore_topmost()
 
     def show_overlay(self) -> None:
+        previous_window = foreground_window()
+        self._return_window_id = (
+            previous_window if previous_window != int(self.winId()) else 0
+        )
         self._active = True
         self._editing = False
         self._activation_guard = True
@@ -1134,7 +1199,9 @@ class OverlayWindow(QWidget):
         )
         self.show_passive()
 
-    def hide_overlay(self) -> None:
+    def hide_overlay(self, *, restore_focus: bool = False) -> None:
+        return_window_id = self._return_window_id
+        self._return_window_id = 0
         self._active = False
         self._activation_guard = False
         self._stop_scroll_animation()
@@ -1150,6 +1217,8 @@ class OverlayWindow(QWidget):
             self.show_passive()
         else:
             self.hide()
+        if restore_focus and return_window_id:
+            QTimer.singleShot(0, lambda: restore_window(return_window_id))
 
     def toggle_visibility(self) -> None:
         self._user_hidden = not self._user_hidden
@@ -1198,7 +1267,7 @@ class OverlayWindow(QWidget):
         text = decision.text
         should_send = decision.action is OverlayAction.SEND_AND_HIDE and bool(text)
         self.input.clear()
-        self.hide_overlay()
+        self.hide_overlay(restore_focus=True)
         if should_send:
             self.send_requested.emit(text)
 
@@ -1209,7 +1278,7 @@ class OverlayWindow(QWidget):
             and event.key() == Qt.Key.Key_Escape
         ):
             self.input.clear()
-            self.hide_overlay()
+            self.hide_overlay(restore_focus=True)
             return True
         if (
             self._active
@@ -1226,7 +1295,7 @@ class OverlayWindow(QWidget):
     def keyPressEvent(self, event) -> None:
         if event.key() == Qt.Key.Key_Escape:
             self.input.clear()
-            self.hide_overlay()
+            self.hide_overlay(restore_focus=True)
             event.accept()
             return
         super().keyPressEvent(event)

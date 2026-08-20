@@ -173,6 +173,53 @@ def focus_window(window_id: int, input_id: int) -> bool:
     )
 
 
+def foreground_window() -> int:
+    if os.name != "nt":
+        return 0
+    return int(ctypes.windll.user32.GetForegroundWindow() or 0)
+
+
+def _restore_window_native(user32, kernel32, window_id: int) -> bool:
+    if not window_id or not user32.IsWindow(window_id):
+        return False
+    foreground = int(user32.GetForegroundWindow() or 0)
+    if foreground == window_id:
+        return True
+    foreground_thread = (
+        int(user32.GetWindowThreadProcessId(foreground, None)) if foreground else 0
+    )
+    current_thread = int(kernel32.GetCurrentThreadId())
+    attached = bool(
+        foreground_thread
+        and foreground_thread != current_thread
+        and user32.AttachThreadInput(current_thread, foreground_thread, True)
+    )
+    try:
+        if user32.IsIconic(window_id):
+            user32.ShowWindow(window_id, SW_RESTORE)
+        user32.BringWindowToTop(window_id)
+        user32.SetForegroundWindow(window_id)
+        user32.SetActiveWindow(window_id)
+        if int(user32.GetForegroundWindow() or 0) != window_id:
+            switch_to_window = getattr(user32, "SwitchToThisWindow", None)
+            if switch_to_window is not None:
+                switch_to_window(window_id, True)
+        return int(user32.GetForegroundWindow() or 0) == window_id
+    finally:
+        if attached:
+            user32.AttachThreadInput(current_thread, foreground_thread, False)
+
+
+def restore_window(window_id: int) -> bool:
+    if os.name != "nt":
+        return False
+    return _restore_window_native(
+        ctypes.windll.user32,
+        ctypes.windll.kernel32,
+        window_id,
+    )
+
+
 def ensure_window_topmost(window_id: int) -> None:
     if os.name != "nt":
         return

@@ -11,6 +11,7 @@ from oopz_overlay.win32_input import (
     GlobalWheelRegistration,
     HotkeySpec,
     _focus_window_native,
+    _restore_window_native,
     parse_hotkey,
 )
 
@@ -126,6 +127,67 @@ def test_focus_window_reasserts_topmost_and_forces_one_retry() -> None:
     assert _focus_window_native(user32, Kernel32(), 100, 101)
     assert user32.topmost_target == (100, HWND_TOPMOST)
     assert user32.foreground == 100
+
+
+def test_restore_window_returns_to_previous_foreground_without_making_it_topmost() -> (
+    None
+):
+    class User32:
+        def __init__(self) -> None:
+            self.foreground = 100
+            self.topmost_calls = 0
+            self.show_calls = 0
+
+        @staticmethod
+        def IsWindow(window: int) -> int:
+            return int(window == 900)
+
+        def GetForegroundWindow(self) -> int:
+            return self.foreground
+
+        @staticmethod
+        def GetWindowThreadProcessId(_window: int, _process) -> int:
+            return 8
+
+        @staticmethod
+        def AttachThreadInput(*_args) -> int:
+            return 1
+
+        @staticmethod
+        def IsIconic(_window: int) -> int:
+            return 0
+
+        def ShowWindow(self, *_args) -> int:
+            self.show_calls += 1
+            return 1
+
+        @staticmethod
+        def BringWindowToTop(*_args) -> int:
+            return 1
+
+        def SetForegroundWindow(self, window: int) -> int:
+            self.foreground = window
+            return 1
+
+        @staticmethod
+        def SetActiveWindow(*_args) -> int:
+            return 1
+
+        def SetWindowPos(self, *_args) -> int:
+            self.topmost_calls += 1
+            return 1
+
+    class Kernel32:
+        @staticmethod
+        def GetCurrentThreadId() -> int:
+            return 9
+
+    user32 = User32()
+
+    assert _restore_window_native(user32, Kernel32(), 900)
+    assert user32.foreground == 900
+    assert user32.show_calls == 0
+    assert user32.topmost_calls == 0
 
 
 def test_parse_hotkey_normalizes_letters_and_rejects_ambiguous_sequences() -> None:

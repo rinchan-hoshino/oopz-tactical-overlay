@@ -36,8 +36,10 @@ from .win32_input import GlobalHotkeyRegistration, GlobalWheelRegistration
 
 class Bridge(QObject):
     timeline = Signal(object)
+    live_timeline = Signal(object)
     status = Signal(str, bool)
     error = Signal(str)
+    send_error = Signal(str)
     login_result = Signal(object)
     update_ready = Signal(str)
     update_progress = Signal(object)
@@ -83,14 +85,18 @@ class AppController(QObject):
         self.gateway = GatewayRuntime(
             GatewayCallbacks(
                 timeline=self.bridge.timeline.emit,
+                live_timeline=self.bridge.live_timeline.emit,
                 status=self.bridge.status.emit,
                 error=self.bridge.error.emit,
+                send_error=self.bridge.send_error.emit,
             )
         )
 
         self.bridge.timeline.connect(self.overlay.merge_messages)
+        self.bridge.live_timeline.connect(self.overlay.merge_live_messages)
         self.bridge.status.connect(self.overlay.set_connection_status)
         self.bridge.error.connect(self._on_error)
+        self.bridge.send_error.connect(self._on_send_error)
         self.bridge.login_result.connect(self._on_login_result)
         self.bridge.update_ready.connect(self._on_update_ready)
         self.bridge.update_progress.connect(self._on_update_progress)
@@ -309,6 +315,12 @@ class AppController(QObject):
         self.overlay.set_connection_status(text, False)
         if self.setup_dialog is not None and self.setup_dialog.isVisible():
             self.setup_dialog.show_error(text)
+        self._show_warning(text)
+
+    def _on_send_error(self, text: str) -> None:
+        self._show_warning(f"消息发送失败：{text}")
+
+    def _show_warning(self, text: str) -> None:
         self.tray.showMessage(
             "Oopz 战术对话栏",
             text,

@@ -70,6 +70,22 @@ def test_manual_channel_change_clears_timeline_and_reconnects(
     app.processEvents()
 
 
+def test_send_rejection_keeps_the_channel_connected(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
+    app = QApplication.instance() or QApplication([])
+    controller = AppController(app)
+    controller.overlay.configure(AppSettings(always_visible=True))
+    controller.overlay.set_connection_status("#塔科夫", True)
+
+    controller._on_send_error("Oopz：消息包含违禁词")
+    app.processEvents()
+
+    assert controller.overlay.is_connected
+    assert controller.overlay.isVisible()
+    controller.shutdown()
+    app.processEvents()
+
+
 def test_visibility_hotkey_toggles_the_passive_hud(tmp_path, monkeypatch) -> None:
     monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
     app = QApplication.instance() or QApplication([])
