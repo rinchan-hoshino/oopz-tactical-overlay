@@ -120,6 +120,35 @@ def test_message_text_uses_yahai_and_a_thin_outline_without_shadow_effects() -> 
     assert _outline_width_for_font(labels[0].font()) <= 1.5
 
 
+def test_message_body_uses_available_hud_width_before_wrapping() -> None:
+    app = QApplication.instance() or QApplication([])
+    row = MessageRow(ChatMessage("wide", 1, "u", "队友A", "等一下，楼梯有脚步", False))
+    sender, body = row.findChildren(OutlinedLabel)
+    # Offscreen Windows uses fallback font metrics. Give the text enough room
+    # in either font backend, then verify the layout actually uses that room.
+    width = max(
+        316,
+        sender.sizeHint().width()
+        + body.fontMetrics().horizontalAdvance(body.text())
+        + 24,
+    )
+    row.setFixedWidth(width)
+    row.show()
+    app.processEvents()
+    row.layout().activate()
+    assert body.geometry().right() >= row.width() - 4
+    assert body.contentsRect().width() >= body.fontMetrics().horizontalAdvance(
+        body.text()
+    )
+    assert row.layout().heightForWidth(width) < 2 * body.fontMetrics().height()
+    row.setFixedWidth(900)
+    app.processEvents()
+    row.layout().activate()
+    assert body.width() > 570
+    row.deleteLater()
+    app.processEvents()
+
+
 def test_only_live_messages_receive_a_short_fading_highlight() -> None:
     app = QApplication.instance() or QApplication([])
     window = OverlayWindow()

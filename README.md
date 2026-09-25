@@ -72,7 +72,7 @@ uv run python tools/native_windows_probe.py --output artifacts/native
 
 生成的程序位于 `release/OopzTacticalOverlay.exe`。构建会验证打包后的 SDK 导入；`--smoke-test` 可进一步检查界面、托盘和设置读写。
 
-重构约定见 [重构记录](docs/rebuild.md)，验证范围见 [0.9.0 验证记录](docs/validation-0.9.0.md)。
+重构约定见 [重构记录](docs/rebuild.md)，验证范围见 [0.9.1 验证记录](docs/validation-0.9.1.md)。
 
 ## 许可证
 

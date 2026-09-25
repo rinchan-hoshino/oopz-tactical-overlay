@@ -336,7 +336,6 @@ class MessageRow(QWidget):
         sender.setStyleSheet("background:transparent;")
         text = OutlinedLabel(message.text)
         text.setWordWrap(True)
-        text.setMaximumWidth(570)
         text.setFont(_ui_font(font_size))
         text_palette = text.palette()
         text_palette.setColor(
@@ -346,8 +345,7 @@ class MessageRow(QWidget):
         text.setPalette(text_palette)
         text.setStyleSheet("background:transparent;")
         layout.addWidget(sender, 0, Qt.AlignmentFlag.AlignTop)
-        layout.addWidget(text, 0, Qt.AlignmentFlag.AlignTop)
-        layout.addStretch(1)
+        layout.addWidget(text, 1, Qt.AlignmentFlag.AlignTop)
 
     @property
     def highlight_alpha(self) -> int:
@@ -596,7 +594,8 @@ class OverlayWindow(QWidget):
             )
             row.setFixedWidth(row_width)
             row.layout().activate()
-            item.setSizeHint(QSize(row_width, row.sizeHint().height() + 3))
+            height = row.layout().heightForWidth(row_width)
+            item.setSizeHint(QSize(row_width, max(1, height) + 3))
             self.history.setItemWidget(item, row)
             self._rendered_rows[message.message_id] = (item, row, signature)
         if force_latest or not self._active or was_latest:
