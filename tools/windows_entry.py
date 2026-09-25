@@ -3,10 +3,9 @@ from __future__ import annotations
 import os
 import sys
 import traceback
+import re
 from datetime import UTC, datetime
 from pathlib import Path
-
-from oopz_overlay.main import main
 
 
 def _diagnostic_path() -> Path:
@@ -18,8 +17,15 @@ def _diagnostic_path() -> Path:
 
 def _record(message: str) -> None:
     timestamp = datetime.now(UTC).isoformat()
-    with _diagnostic_path().open("a", encoding="utf-8") as stream:
-        stream.write(f"{timestamp} pid={os.getpid()} {message}\n")
+    message = re.sub(r"eyJ[\w-]+\.[\w-]+\.[\w-]+", "[redacted]", message)
+    try:
+        path = _diagnostic_path()
+        if path.exists() and path.stat().st_size > 262144:
+            path.replace(path.with_suffix(".log.1"))
+        with path.open("a", encoding="utf-8") as stream:
+            stream.write(f"{timestamp} pid={os.getpid()} {message}\n")
+    except OSError:
+        pass
 
 
 def _unhandled_exception(exception_type, exception, traceback_object) -> None:
@@ -33,9 +39,20 @@ if __name__ == "__main__":
     sys.excepthook = _unhandled_exception
     _record(f"START argv={sys.argv[1:]!r}")
     try:
+        from oopz_overlay.main import main
+
         exit_code = main()
-    except BaseException:
+    except Exception:
         _unhandled_exception(*sys.exc_info())
+        if os.name == "nt":
+            import ctypes
+
+            ctypes.windll.user32.MessageBoxW(
+                None,
+                "Oopz 文字上屏启动失败。可重新下载程序后再试，详细原因已记录在 startup.log。",
+                "Oopz 文字上屏",
+                0x10,
+            )
         raise
     _record(f"EXIT code={exit_code}")
     one_shot_modes = {

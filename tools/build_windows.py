@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import argparse
 import hashlib
 import json
 import shutil
@@ -15,16 +16,22 @@ PUBLIC_BASE = "https://acv.k-neco.com/tools/oopz-tactical-overlay"
 
 
 def main() -> None:
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--incremental", action="store_true", help="Reuse Nuitka's build cache"
+    )
+    options = parser.parse_args()
     project = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
     version = str(project["project"]["version"])
     windows_version = ".".join([*version.split("."), "0"])
     dist = ROOT / "dist"
     release = ROOT / "release"
     build = ROOT / "build" / "nuitka"
-    for directory in (dist, build):
-        shutil.rmtree(directory, ignore_errors=True)
-    dist.mkdir(parents=True)
-    build.mkdir(parents=True)
+    if not options.incremental:
+        for directory in (dist, build):
+            shutil.rmtree(directory, ignore_errors=True)
+    dist.mkdir(parents=True, exist_ok=True)
+    build.mkdir(parents=True, exist_ok=True)
 
     subprocess.run(
         [
@@ -32,6 +39,7 @@ def main() -> None:
             "-m",
             "nuitka",
             "--mode=onefile",
+            "--jobs=2",
             "--onefile-cache-mode=cached",
             f"--onefile-tempdir-spec={{CACHE_DIR}}/RinChan/{PRODUCT}/{{VERSION}}",
             f"--onefile-windows-splash-screen-image={ROOT / 'assets' / 'splash.png'}",
@@ -48,6 +56,9 @@ def main() -> None:
             f"--product-version={windows_version}",
             "--copyright=Copyright 2026 RinChan",
             "--include-package=oopz_sdk",
+            # Login comes from the installed Oopz client. The SDK's optional
+            # browser login/voice runtime and test fixtures are not used here.
+            "--nofollow-import-to=oopz_sdk.testing,playwright,pytest",
             "--include-package-data=certifi",
             f"--report={build / 'compilation-report.xml'}",
             str(ROOT / "tools" / "windows_entry.py"),

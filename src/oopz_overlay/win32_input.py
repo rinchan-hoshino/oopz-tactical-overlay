@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import ctypes
 import os
+import threading
+from functools import lru_cache
 from ctypes import wintypes
 from dataclasses import dataclass
 
@@ -125,48 +127,58 @@ def parse_hotkey(value: str) -> HotkeySpec:
 
 
 def _focus_window_native(user32, kernel32, window_id: int, input_id: int) -> bool:
-    foreground = int(user32.GetForegroundWindow() or 0)
-    foreground_thread = (
-        int(user32.GetWindowThreadProcessId(foreground, None)) if foreground else 0
-    )
-    current_thread = int(kernel32.GetCurrentThreadId())
-    attached = bool(
-        foreground_thread
-        and foreground_thread != current_thread
-        and user32.AttachThreadInput(current_thread, foreground_thread, True)
-    )
-    try:
-        user32.ShowWindow(window_id, SW_RESTORE)
-        user32.SetWindowPos(
-            window_id,
-            HWND_TOPMOST,
-            0,
-            0,
-            0,
-            0,
-            SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW | SWP_NOOWNERZORDER,
-        )
-        user32.BringWindowToTop(window_id)
-        user32.SetForegroundWindow(window_id)
-        user32.SetActiveWindow(window_id)
-        user32.SetFocus(input_id)
-        if int(user32.GetForegroundWindow() or 0) != window_id:
-            switch_to_window = getattr(user32, "SwitchToThisWindow", None)
-            if switch_to_window is not None:
-                switch_to_window(window_id, True)
-            user32.SetForegroundWindow(window_id)
-            user32.SetFocus(input_id)
-        return int(user32.GetForegroundWindow() or 0) == window_id
-    finally:
-        if attached:
-            user32.AttachThreadInput(current_thread, foreground_thread, False)
+    # A registered hotkey supplies user intent. Never attach another application's
+    # input queue, synthesize Alt-Tab, or alter its window placement to obtain focus.
+    user32.SetForegroundWindow(window_id)
+    if int(user32.GetForegroundWindow() or 0) != window_id:
+        return False
+    user32.SetFocus(input_id)
+    return True
+
+
+@lru_cache(maxsize=1)
+def _user32():
+    api = ctypes.WinDLL("user32", use_last_error=True)
+    signatures = {
+        "GetForegroundWindow": ([], wintypes.HWND),
+        "SetForegroundWindow": ([wintypes.HWND], wintypes.BOOL),
+        "SetFocus": ([wintypes.HWND], wintypes.HWND),
+        "IsWindow": ([wintypes.HWND], wintypes.BOOL),
+        "IsIconic": ([wintypes.HWND], wintypes.BOOL),
+        "SetWindowPos": (
+            [
+                wintypes.HWND,
+                wintypes.HWND,
+                ctypes.c_int,
+                ctypes.c_int,
+                ctypes.c_int,
+                ctypes.c_int,
+                wintypes.UINT,
+            ],
+            wintypes.BOOL,
+        ),
+        "RegisterHotKey": (
+            [wintypes.HWND, ctypes.c_int, wintypes.UINT, wintypes.UINT],
+            wintypes.BOOL,
+        ),
+        "UnregisterHotKey": ([wintypes.HWND, ctypes.c_int], wintypes.BOOL),
+        "PostThreadMessageW": (
+            [wintypes.DWORD, wintypes.UINT, wintypes.WPARAM, wintypes.LPARAM],
+            wintypes.BOOL,
+        ),
+    }
+    for name, (args, result) in signatures.items():
+        function = getattr(api, name)
+        function.argtypes = args
+        function.restype = result
+    return api
 
 
 def focus_window(window_id: int, input_id: int) -> bool:
     if os.name != "nt":
         return False
     return _focus_window_native(
-        ctypes.windll.user32,
+        _user32(),
         ctypes.windll.kernel32,
         window_id,
         input_id,
@@ -176,54 +188,40 @@ def focus_window(window_id: int, input_id: int) -> bool:
 def foreground_window() -> int:
     if os.name != "nt":
         return 0
-    return int(ctypes.windll.user32.GetForegroundWindow() or 0)
+    return int(_user32().GetForegroundWindow() or 0)
 
 
-def _restore_window_native(user32, kernel32, window_id: int) -> bool:
+def _restore_window_native(
+    user32, kernel32, window_id: int, expected_foreground: int = 0
+) -> bool:
     if not window_id or not user32.IsWindow(window_id):
         return False
     foreground = int(user32.GetForegroundWindow() or 0)
     if foreground == window_id:
         return True
-    foreground_thread = (
-        int(user32.GetWindowThreadProcessId(foreground, None)) if foreground else 0
-    )
-    current_thread = int(kernel32.GetCurrentThreadId())
-    attached = bool(
-        foreground_thread
-        and foreground_thread != current_thread
-        and user32.AttachThreadInput(current_thread, foreground_thread, True)
-    )
-    try:
-        if user32.IsIconic(window_id):
-            user32.ShowWindow(window_id, SW_RESTORE)
-        user32.BringWindowToTop(window_id)
-        user32.SetForegroundWindow(window_id)
-        user32.SetActiveWindow(window_id)
-        if int(user32.GetForegroundWindow() or 0) != window_id:
-            switch_to_window = getattr(user32, "SwitchToThisWindow", None)
-            if switch_to_window is not None:
-                switch_to_window(window_id, True)
-        return int(user32.GetForegroundWindow() or 0) == window_id
-    finally:
-        if attached:
-            user32.AttachThreadInput(current_thread, foreground_thread, False)
+    if expected_foreground and foreground not in {0, expected_foreground}:
+        return False
+    if user32.IsIconic(window_id):
+        return False
+    user32.SetForegroundWindow(window_id)
+    return int(user32.GetForegroundWindow() or 0) == window_id
 
 
-def restore_window(window_id: int) -> bool:
+def restore_window(window_id: int, expected_foreground: int = 0) -> bool:
     if os.name != "nt":
         return False
     return _restore_window_native(
-        ctypes.windll.user32,
+        _user32(),
         ctypes.windll.kernel32,
         window_id,
+        expected_foreground,
     )
 
 
 def ensure_window_topmost(window_id: int) -> None:
     if os.name != "nt":
         return
-    ctypes.windll.user32.SetWindowPos(
+    _user32().SetWindowPos(
         window_id,
         HWND_TOPMOST,
         0,
@@ -235,16 +233,29 @@ def ensure_window_topmost(window_id: int) -> None:
 
 
 def prepare_input_method(input_id: int) -> bool:
-    """Attach the current Windows IME to the editor and open it for text input."""
+    """Attach an IME context without changing the user's input mode."""
     if os.name != "nt":
         return False
-    imm32 = ctypes.windll.imm32
-    imm32.ImmAssociateContextEx(wintypes.HWND(input_id), None, 0x10)
+    imm32 = ctypes.WinDLL("imm32", use_last_error=True)
+    imm32.ImmAssociateContextEx.argtypes = [
+        wintypes.HWND,
+        wintypes.HANDLE,
+        wintypes.DWORD,
+    ]
+    imm32.ImmAssociateContextEx.restype = wintypes.BOOL
+    imm32.ImmGetContext.argtypes = [wintypes.HWND]
+    imm32.ImmGetContext.restype = wintypes.HANDLE
+    imm32.ImmReleaseContext.argtypes = [wintypes.HWND, wintypes.HANDLE]
+    imm32.ImmReleaseContext.restype = wintypes.BOOL
     context = imm32.ImmGetContext(wintypes.HWND(input_id))
+    if not context:
+        imm32.ImmAssociateContextEx(wintypes.HWND(input_id), None, 0x10)
+        context = imm32.ImmGetContext(wintypes.HWND(input_id))
     if not context:
         return False
     try:
-        return bool(imm32.ImmSetOpenStatus(context, True))
+        # Preserve the user's IME mode instead of forcing Chinese/English globally.
+        return True
     finally:
         imm32.ImmReleaseContext(wintypes.HWND(input_id), context)
 
@@ -253,7 +264,7 @@ def set_window_click_through(window_id: int, enabled: bool) -> None:
     """Toggle native click-through without installing a window or keyboard hook."""
     if os.name != "nt":
         return
-    user32 = ctypes.windll.user32
+    user32 = _user32()
     get_style = getattr(user32, "GetWindowLongPtrW", user32.GetWindowLongW)
     set_style = getattr(user32, "SetWindowLongPtrW", user32.SetWindowLongW)
     get_style.argtypes = [wintypes.HWND, ctypes.c_int]
@@ -290,16 +301,25 @@ class GlobalWheelRegistration:
         user32=None,
         kernel32=None,
         install: bool = True,
+        window_id: int = 0,
+        on_error=None,
     ) -> None:
         if install and os.name != "nt" and user32 is None:
             raise OSError("Global wheel capture is only available on Windows")
         self._callback = callback
         self._enabled = False
-        self._user32 = user32 or (ctypes.windll.user32 if os.name == "nt" else None)
+        self._user32 = user32 or (_user32() if os.name == "nt" else None)
         self._kernel32 = kernel32 or (
             ctypes.windll.kernel32 if os.name == "nt" else None
         )
         self._hook = 0
+        self._window_id = window_id
+        self._install_requested = install
+        self._thread = None
+        self._thread_id = 0
+        self._thread_ready = threading.Event()
+        self._closed = False
+        self._on_error = on_error
         callback_factory = getattr(ctypes, "WINFUNCTYPE", ctypes.CFUNCTYPE)
         self._procedure_type = callback_factory(
             ctypes.c_ssize_t,
@@ -308,8 +328,49 @@ class GlobalWheelRegistration:
             wintypes.LPARAM,
         )
         self._procedure = self._procedure_type(self._hook_procedure)
-        if install:
+        if self._install_requested:
+            self._start_worker()
+
+    def _start_worker(self) -> None:
+        self._thread_ready.clear()
+        self._thread_id = 0
+        self._thread = threading.Thread(
+            target=self._pump, name="oopz-wheel", daemon=True
+        )
+        self._thread.start()
+
+    def _sync_hook(self) -> None:
+        if self._enabled and not self._hook:
             self._install()
+        elif not self._enabled and self._hook:
+            self._user32.UnhookWindowsHookEx(self._hook)
+            self._hook = 0
+
+    def _pump(self) -> None:
+        self._thread_id = int(self._kernel32.GetCurrentThreadId())
+        message = wintypes.MSG()
+        self._user32.PeekMessageW(ctypes.byref(message), None, 0, 0, 0)
+        self._thread_ready.set()
+        try:
+            # close() may run before this thread creates its Windows queue.
+            # In that case a posted WM_QUIT cannot arrive; exit here instead.
+            if self._closed:
+                return
+            self._sync_hook()
+            while self._user32.GetMessageW(ctypes.byref(message), None, 0, 0) > 0:
+                if message.message == 0x8001:
+                    self._sync_hook()
+                else:
+                    self._user32.TranslateMessage(ctypes.byref(message))
+                    self._user32.DispatchMessageW(ctypes.byref(message))
+        except Exception as exc:
+            self._enabled = False
+            if self._on_error is not None:
+                self._on_error(f"滚轮监听暂时不可用：{exc}")
+        finally:
+            if self._hook:
+                self._user32.UnhookWindowsHookEx(self._hook)
+                self._hook = 0
 
     def _install(self) -> None:
         if self._user32 is None or self._kernel32 is None:
@@ -342,16 +403,28 @@ class GlobalWheelRegistration:
             raise OSError(int(self._kernel32.GetLastError()), "无法监听滚轮")
 
     def set_enabled(self, enabled: bool) -> None:
+        if self._closed:
+            return
         self._enabled = enabled
+        if not self._install_requested:
+            return
+        if enabled and (self._thread is None or not self._thread.is_alive()):
+            self._start_worker()
+        if self._thread_ready.is_set():
+            self._user32.PostThreadMessageW(self._thread_id, 0x8001, 0, 0)
 
     def dispatch(self, message: int, mouse_data: int) -> bool:
         if not self._enabled or message != WM_MOUSEWHEEL:
             return False
+        if (
+            self._window_id
+            and int(self._user32.GetForegroundWindow() or 0) != self._window_id
+        ):
+            return False
         delta = ctypes.c_short((mouse_data >> 16) & 0xFFFF).value
         if not delta:
             return False
-        self._callback(delta)
-        return True
+        return self._callback(delta) is not False
 
     def _hook_procedure(self, code: int, message: int, pointer: int) -> int:
         if code >= 0 and message == WM_MOUSEWHEEL:
@@ -366,8 +439,12 @@ class GlobalWheelRegistration:
         return int(self._user32.CallNextHookEx(self._hook, code, message, pointer))
 
     def close(self) -> None:
+        self._closed = True
         self._enabled = False
-        if self._hook and self._user32 is not None:
+        if self._thread is not None:
+            self._user32.PostThreadMessageW(self._thread_id, 0x0012, 0, 0)
+            self._thread.join(timeout=1)
+        elif self._hook and self._user32 is not None:
             self._user32.UnhookWindowsHookEx(self._hook)
             self._hook = 0
 
@@ -379,14 +456,30 @@ class GlobalHotkeyRegistration:
         if os.name != "nt" and user32 is None:
             raise OSError("Global hotkeys are only available on Windows")
         self._window_id = window_id
-        self._user32 = user32 or ctypes.windll.user32
+        self._user32 = user32 or _user32()
         self._registered: dict[int, HotkeySpec] = {}
+        self._requested: tuple[str, str] | None = None
+        self._paused = False
+
+    def set_paused(self, paused: bool) -> None:
+        if paused == self._paused:
+            return
+        self._paused = paused
+        if paused:
+            self._unregister_all()
+        elif self._requested is not None:
+            self.configure(*self._requested)
 
     def configure(self, activation: str, visibility: str) -> None:
         requested = {
             HOTKEY_ACTIVATE_ID: parse_hotkey(activation),
             HOTKEY_VISIBILITY_ID: parse_hotkey(visibility),
         }
+        if requested[HOTKEY_ACTIVATE_ID] == requested[HOTKEY_VISIBILITY_ID]:
+            raise ValueError("输入和显示快捷键不能相同")
+        if self._paused:
+            self._requested = (activation, visibility)
+            return
         if requested == self._registered:
             return
         previous = dict(self._registered)
@@ -397,6 +490,7 @@ class GlobalHotkeyRegistration:
             self._unregister_all()
             self._register_all(previous)
             raise
+        self._requested = (activation, visibility)
 
     def close(self) -> None:
         self._unregister_all()

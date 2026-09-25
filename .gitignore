@@ -4,6 +4,8 @@ __pycache__/
 build/
 dist/
 release/
+artifacts/
+.ruff_cache/
 *.spec
 *.py[cod]
 *.log

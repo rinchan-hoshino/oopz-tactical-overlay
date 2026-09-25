@@ -1,4 +1,5 @@
 import pytest
+from dataclasses import replace
 
 pytest.importorskip("PySide6")
 
@@ -7,6 +8,34 @@ from PySide6.QtWidgets import QApplication
 from oopz_overlay.chat import ChatMessage
 from oopz_overlay.main import AppController, _close_onefile_splash
 from oopz_overlay.settings import AppSettings
+from oopz_overlay.gateway import Destination, GatewayEvent, LoginResult, OutgoingMessage
+
+
+@pytest.fixture(autouse=True)
+def isolated_platform(monkeypatch):
+    class Hotkeys:
+        def __init__(self, *_args):
+            pass
+
+        def configure(self, *_args):
+            pass
+
+        def set_paused(self, *_args):
+            pass
+
+        def close(self):
+            pass
+
+    class Protector:
+        def protect(self, data):
+            return data
+
+        def unprotect(self, data):
+            return data
+
+    monkeypatch.setattr("oopz_overlay.main.GlobalHotkeyRegistration", Hotkeys)
+    monkeypatch.setattr("oopz_overlay.main.WindowsDpapiProtector", Protector)
+    monkeypatch.setattr(AppController, "_import_session", lambda self: None)
 
 
 def test_app_controller_constructs_with_owned_state_root(tmp_path, monkeypatch) -> None:
@@ -112,3 +141,106 @@ def test_onefile_splash_feedback_is_removed_when_ui_is_ready(
     _close_onefile_splash()
 
     assert not feedback.exists()
+
+
+def test_refreshing_credentials_connects_even_while_settings_are_visible(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
+    app = QApplication.instance() or QApplication([])
+    controller = AppController(app)
+    connected = []
+    monkeypatch.setattr(controller.gateway, "connect", connected.append)
+    controller.settings = AppSettings(area_id="area", channel_id="text", font_size=18)
+    controller.open_settings()
+    result = LoginResult(
+        AppSettings(
+            device_id="device",
+            person_uid="me",
+            jwt_token="first",
+            area_id="area",
+            channel_id="text",
+            channel_name="聊天",
+        ),
+        (Destination("area", "server", "text", "聊天"),),
+        "area",
+        "server",
+        True,
+    )
+    controller._on_login_result(result)
+    controller._on_login_result(
+        replace(result, settings=replace(result.settings, jwt_token="refreshed"))
+    )
+    assert [settings.jwt_token for settings in connected] == ["first", "refreshed"]
+    assert all(settings.font_size == 18 for settings in connected)
+    controller.setup_dialog.close()
+    controller.shutdown()
+
+
+def test_old_queued_events_are_ignored_and_failed_draft_returns_to_its_channel(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
+    app = QApplication.instance() or QApplication([])
+    controller = AppController(app)
+    controller.settings = AppSettings(
+        person_uid="me", area_id="area", channel_id="text"
+    )
+    controller._on_gateway_event(
+        GatewayEvent(
+            -1, "timeline", ([ChatMessage("old", 1, "peer", "peer", "stale", False)],)
+        )
+    )
+    assert not controller.overlay.timeline.items
+    controller._on_gateway_event(
+        GatewayEvent(
+            -1,
+            "send_failed",
+            (OutgoingMessage("保留草稿😀", "area", "text", "me", "消息被拒绝"),),
+        )
+    )
+    controller.overlay.set_connection_status("#text", True)
+    controller._activate_overlay()
+    assert controller.overlay.input.text() == "保留草稿😀"
+    assert controller.overlay.input.cursorPosition() == 6
+    controller.shutdown()
+
+
+def test_manual_refresh_during_background_poll_is_not_lost(tmp_path, monkeypatch):
+    from oopz_overlay.local_session import LocalOopzSession
+
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
+    app = QApplication.instance() or QApplication([])
+    controller = AppController(app)
+    controller.settings = AppSettings(
+        device_id="d", person_uid="p", jwt_token="t", area_id="a", channel_id="c"
+    )
+    controller._connected_key = controller._connection_key(controller.settings)
+    controller._session_reading = True
+    inspections = []
+    monkeypatch.setattr(
+        controller.gateway,
+        "inspect_session",
+        lambda settings, **kw: inspections.append(settings),
+    )
+    controller._read_session(force=True)
+    controller._on_session_checked((LocalOopzSession("d", "p", "t"), "", False))
+    assert len(inspections) == 1
+    assert not controller._session_reading
+    assert not controller._session_refresh_pending
+    controller.shutdown()
+
+
+def test_repeated_notification_is_coalesced(tmp_path, monkeypatch):
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
+    app = QApplication.instance() or QApplication([])
+    controller = AppController(app)
+    notifications = []
+    monkeypatch.setattr(
+        controller.tray, "showMessage", lambda *args: notifications.append(args)
+    )
+    controller._show_warning("连接中断")
+    controller._show_warning("连接中断")
+    controller._show_warning("消息发送失败")
+    assert len(notifications) == 2
+    controller.shutdown()

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import math
 from dataclasses import asdict, dataclass, field, fields
 from pathlib import Path
 from typing import Protocol
@@ -18,6 +19,7 @@ class AppSettings:
     area_name: str = ""
     channel_id: str = ""
     channel_name: str = ""
+    screen_name: str = ""
     hotkey: str = "F8"
     visibility_hotkey: str = "F9"
     position_x: float = 0.5
@@ -35,6 +37,17 @@ class AppSettings:
             item.name for item in fields(cls) if item.metadata.get("persist", True)
         }
         data = {key: value for key, value in raw.items() if key in known}
+        for key in (
+            "area_id",
+            "area_name",
+            "channel_id",
+            "channel_name",
+            "screen_name",
+            "hotkey",
+            "visibility_hotkey",
+        ):
+            if key in data and not isinstance(data[key], str):
+                raise ValueError(f"invalid setting: {key}")
         data["schema_version"] = 8
         if "position_x" not in data:
             data["position_x"] = 0.5
@@ -51,6 +64,11 @@ class AppSettings:
             0,
             min(85, int(data.get("backdrop_opacity", 32))),
         )
+        for key, fallback in (("position_x", 0.5), ("position_y", 0.82)):
+            value = float(data.get(key, fallback))
+            data[key] = max(0.0, min(1.0, value)) if math.isfinite(value) else fallback
+        for key in ("overlay_width", "overlay_height"):
+            data[key] = max(0, min(16000, int(data.get(key, 0))))
         return cls(**data)
 
     @property

@@ -74,7 +74,7 @@ def test_transparent_input_draws_one_outlined_text_layer_on_native_geometry() ->
     app.processEvents()
 
     native_text = window.input.palette().color(QPalette.ColorRole.Text)
-    assert native_text.alpha() == 0
+    assert native_text.alpha() == 255
     assert window.input.rendered_text() == "透明描边"
     expected_origin = (
         window.input.cursorRect().x()
@@ -99,11 +99,11 @@ def test_transparent_input_draws_one_outlined_text_layer_on_native_geometry() ->
 
     caret = window.input.cursorRect()
     active_empty = window.input.grab().toImage()
-    active_caret = active_empty.pixelColor(caret.x(), caret.center().y())
+    active_caret = active_empty.pixelColor(caret.center().x(), caret.center().y())
     window.hide_overlay()
     app.processEvents()
     passive_empty = window.input.grab().toImage()
-    passive_caret = passive_empty.pixelColor(caret.x(), caret.center().y())
+    passive_caret = passive_empty.pixelColor(caret.center().x(), caret.center().y())
     assert active_caret.alpha() > passive_caret.alpha()
 
     window.configure(AppSettings(always_visible=False))
@@ -449,7 +449,10 @@ def test_submit_and_escape_restore_the_window_that_owned_focus_before_activation
         "oopz_overlay.widgets.foreground_window",
         lambda: next(foreground),
     )
-    monkeypatch.setattr("oopz_overlay.widgets.restore_window", restored.append)
+    monkeypatch.setattr(
+        "oopz_overlay.widgets.restore_window",
+        lambda window, **_kwargs: restored.append(window),
+    )
     window = OverlayWindow()
     window.set_connection_status("#塔科夫战术", True)
 

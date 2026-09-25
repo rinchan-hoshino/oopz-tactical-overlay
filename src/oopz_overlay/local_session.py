@@ -4,6 +4,8 @@ import base64
 import json
 import os
 import time
+import ctypes
+from ctypes import wintypes
 from collections.abc import Callable
 from dataclasses import dataclass
 
@@ -18,6 +20,44 @@ class LocalOopzSession:
 
 class LocalSessionError(RuntimeError):
     pass
+
+
+def _oopz_is_running() -> bool:
+    class ProcessEntry(ctypes.Structure):
+        _fields_ = [
+            ("dwSize", wintypes.DWORD),
+            ("cntUsage", wintypes.DWORD),
+            ("th32ProcessID", wintypes.DWORD),
+            ("th32DefaultHeapID", ctypes.c_size_t),
+            ("th32ModuleID", wintypes.DWORD),
+            ("cntThreads", wintypes.DWORD),
+            ("th32ParentProcessID", wintypes.DWORD),
+            ("pcPriClassBase", wintypes.LONG),
+            ("dwFlags", wintypes.DWORD),
+            ("szExeFile", wintypes.WCHAR * 260),
+        ]
+
+    kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel.CreateToolhelp32Snapshot.argtypes = [wintypes.DWORD, wintypes.DWORD]
+    kernel.CreateToolhelp32Snapshot.restype = wintypes.HANDLE
+    kernel.CloseHandle.argtypes = [wintypes.HANDLE]
+    for name in ("Process32FirstW", "Process32NextW"):
+        getattr(kernel, name).argtypes = [wintypes.HANDLE, ctypes.POINTER(ProcessEntry)]
+        getattr(kernel, name).restype = wintypes.BOOL
+    snapshot = kernel.CreateToolhelp32Snapshot(0x2, 0)
+    if snapshot == ctypes.c_void_p(-1).value:
+        raise LocalSessionError("无法检查 Oopz 是否运行，请稍后重试。")
+    try:
+        entry = ProcessEntry()
+        entry.dwSize = ctypes.sizeof(entry)
+        found = kernel.Process32FirstW(snapshot, ctypes.byref(entry))
+        while found:
+            if entry.szExeFile.casefold() == "oopz.exe":
+                return True
+            found = kernel.Process32NextW(snapshot, ctypes.byref(entry))
+        return False
+    finally:
+        kernel.CloseHandle(snapshot)
 
 
 def _decode_jwt_exp(token: str) -> int | None:
@@ -75,6 +115,8 @@ def load_oopz_local_session(
     if reader is None:
         if os.name != "nt":
             raise LocalSessionError("只能在安装了 Oopz 的 Windows 用户中读取登录态。")
+        if not _oopz_is_running():
+            raise LocalSessionError("Oopz 尚未运行，请先打开并登录 Oopz。")
         import winreg
 
         def reader() -> str:

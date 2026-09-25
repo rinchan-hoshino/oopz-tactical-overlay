@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 import threading
 from collections.abc import Callable, Coroutine
 from dataclasses import dataclass, replace
@@ -48,6 +49,23 @@ class GatewayCallbacks:
     status: Callable[[str, bool], None]
     error: Callable[[str], None]
     send_error: Callable[[str], None]
+    event: Callable[[GatewayEvent], None] | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class GatewayEvent:
+    generation: int
+    kind: str
+    values: tuple[Any, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class OutgoingMessage:
+    text: str
+    area_id: str
+    channel_id: str
+    person_uid: str = ""
+    error: str = ""
 
 
 class GatewayRuntime:
@@ -61,7 +79,6 @@ class GatewayRuntime:
             name="oopz-gateway",
             daemon=True,
         )
-        self._thread.start()
         self._rest: OopzRESTClient | None = None
         self._ws: OopzWSClient | None = None
         self._ws_task: asyncio.Task | None = None
@@ -69,6 +86,35 @@ class GatewayRuntime:
         self._names: dict[str, str] = {}
         self._parser = EventParser()
         self._closed = False
+        self._generation = 0
+        self._inspection = 0
+        self._inspection_future = None
+        self._switch_lock = asyncio.Lock()
+        self._connect_task: asyncio.Task | None = None
+        self._history_tasks: set[asyncio.Task] = set()
+        self._ready = False
+        self._thread.start()
+
+    @property
+    def generation(self) -> int:
+        return self._generation
+
+    def _emit(self, kind: str, *values: Any, generation: int | None = None) -> None:
+        generation = self._generation if generation is None else generation
+        if self._closed or (
+            generation != self._generation and kind not in {"sent", "send_failed"}
+        ):
+            return
+        event = GatewayEvent(generation, kind, values)
+        if self.callbacks.event is not None:
+            self.callbacks.event(event)
+        else:
+            if kind == "send_failed":
+                self.callbacks.send_error(values[0].error)
+                return
+            callback = getattr(self.callbacks, kind, None)
+            if callback is not None:
+                callback(*values)
 
     def _run_loop(self) -> None:
         asyncio.set_event_loop(self._loop)
@@ -80,27 +126,40 @@ class GatewayRuntime:
         *,
         success: Callable[[Any], None] | None = None,
         error: Callable[[str], None] | None = None,
-    ) -> None:
+    ):
+        if self._closed:
+            coroutine.close()
+            return
+        generation = self._generation
         future = asyncio.run_coroutine_threadsafe(coroutine, self._loop)
 
         def done(result_future) -> None:
+            if result_future.cancelled() or self._closed:
+                return
             try:
                 value = result_future.result()
             except Exception as exc:  # noqa: BLE001 - third-party coroutine boundary
-                (error or self.callbacks.error)(self._friendly_error(exc))
+                if error is not None:
+                    error(self._friendly_error(exc))
+                else:
+                    self._emit(
+                        "error", self._friendly_error(exc), generation=generation
+                    )
                 return
             if success is not None:
                 success(value)
 
         future.add_done_callback(done)
+        return future
 
     @staticmethod
     def _friendly_error(exc: Exception) -> str:
         text = str(exc).strip() or exc.__class__.__name__
+        text = re.sub(r"eyJ[\w-]+\.[\w-]+\.[\w-]+", "[已隐藏登录凭据]", text)
         lowered = text.casefold()
         if "expired" in lowered or "authentication" in lowered or "鉴权" in text:
             return "Oopz 登录态已失效，请先打开 Oopz 刷新后重新读取。"
-        return f"Oopz：{text}"
+        return f"Oopz：{text[:300]}"
 
     def inspect_session(
         self,
@@ -108,7 +167,21 @@ class GatewayRuntime:
         *,
         success: Callable[[LoginResult], None],
     ) -> None:
-        self._submit(self._inspect_session(settings), success=success)
+        self._inspection += 1
+        inspection = self._inspection
+        if self._inspection_future is not None:
+            self._inspection_future.cancel()
+        self._inspection_future = self._submit(
+            self._inspect_session(settings),
+            success=lambda result: (
+                success(result) if inspection == self._inspection else None
+            ),
+            error=lambda text: (
+                self._emit("inspection_error", text)
+                if inspection == self._inspection
+                else None
+            ),
+        )
 
     @staticmethod
     def _config(settings: AppSettings) -> OopzConfig:
@@ -210,73 +283,160 @@ class GatewayRuntime:
         )
 
     def connect(self, settings: AppSettings) -> None:
-        self._submit(self._connect(settings))
+        self._generation += 1
+        self._ready = False
+        self._submit(self._replace_connection(settings, self._generation))
 
     def disconnect(self) -> None:
-        self._submit(self._disconnect())
+        self._generation += 1
+        self._ready = False
+        self._submit(self._replace_connection(None, self._generation))
 
-    async def _connect(self, settings: AppSettings) -> None:
-        await self._disconnect()
+    async def _replace_connection(
+        self, settings: AppSettings | None, generation: int
+    ) -> None:
+        async with self._switch_lock:
+            if generation != self._generation:
+                return
+            if self._connect_task is not None:
+                self._connect_task.cancel()
+                await asyncio.gather(self._connect_task, return_exceptions=True)
+                self._connect_task = None
+            await self._disconnect()
+            if settings is None or generation != self._generation:
+                return
+            self._connect_task = asyncio.create_task(
+                self._connect(settings, generation)
+            )
+
+            def finished(task: asyncio.Task) -> None:
+                if not task.cancelled():
+                    if generation == self._generation:
+                        self._ready = False
+                    error = task.exception() or RuntimeError(
+                        "连接已结束，正在重新连接。"
+                    )
+                    self._emit(
+                        "error", self._friendly_error(error), generation=generation
+                    )
+
+            self._connect_task.add_done_callback(finished)
+
+    async def _connect(
+        self, settings: AppSettings, generation: int | None = None
+    ) -> None:
+        generation = self._generation if generation is None else generation
         self._settings = settings
-        self._names.clear()
+        self._names = {}
+        names = self._names
         config = self._config(settings)
         self._rest = OopzRESTClient(config)
-        await self._rest.start()
+        rest = self._rest
+        await rest.start()
 
-        history = await self._rest.messages.get_channel_messages(
-            settings.area_id,
-            settings.channel_id,
-            size=60,
-        )
-        await self._resolve_names(history)
-        self.callbacks.timeline(
-            [
-                map_message(item, names=self._names, own_uid=settings.person_uid)
-                for item in history
-            ]
-        )
-
-        ready = asyncio.Event()
+        async def history() -> None:
+            try:
+                messages = await rest.messages.get_channel_messages(
+                    settings.area_id,
+                    settings.channel_id,
+                    size=80,
+                )
+                await self._resolve_names(messages, rest=rest, names=names)
+                self._emit(
+                    "timeline",
+                    [
+                        map_message(item, names=names, own_uid=settings.person_uid)
+                        for item in messages
+                    ],
+                    generation=generation,
+                )
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:
+                self._emit(
+                    "history_error",
+                    "历史消息暂时无法读取，实时消息仍会继续接收。",
+                    generation=generation,
+                )
+                LOGGER.debug("History request failed: %s", type(exc).__name__)
 
         async def on_open() -> None:
-            if self._ws is not None:
-                await self._ws.send_subscribe_area_events([settings.area_id])
-            ready.set()
+            if generation != self._generation:
+                return
+            await ws.send_subscribe_area_events([settings.area_id])
+            if generation != self._generation:
+                return
+            self._ready = True
+            self._emit(
+                "status", f"#{settings.channel_name}", True, generation=generation
+            )
+            task = asyncio.create_task(history())
+            self._history_tasks.add(task)
+            task.add_done_callback(self._history_tasks.discard)
 
         async def on_raw(raw: str) -> None:
-            await self._handle_ws_message(raw)
+            await self._handle_ws_message(
+                raw, generation=generation, settings=settings, rest=rest, names=names
+            )
 
         async def on_error(error: object) -> None:
-            self.callbacks.status("正在重连…", False)
+            if generation == self._generation:
+                self._ready = False
+                self._emit(
+                    "status", "连接中断，正在重连…", False, generation=generation
+                )
 
-        self._ws = OopzWSClient(
+        async def on_close(_info: object) -> None:
+            await on_error(None)
+
+        async def on_reconnect() -> None:
+            await on_error(None)
+
+        ws = OopzWSClient(
             config,
             on_open=on_open,
             on_message=on_raw,
             on_error=on_error,
+            on_close=on_close,
+            on_reconnect=on_reconnect,
         )
-        self._ws_task = asyncio.create_task(self._ws.start())
-        await asyncio.wait_for(ready.wait(), timeout=20)
-        self.callbacks.status(f"#{settings.channel_name}", True)
+        self._ws = ws
+        self._ws_task = asyncio.create_task(ws.start())
+        try:
+            await self._ws_task
+        finally:
+            if generation == self._generation:
+                self._ready = False
 
-    async def _resolve_names(self, messages: list[Any]) -> None:
-        if self._rest is None:
+    async def _resolve_names(
+        self, messages: list[Any], *, rest=None, names=None
+    ) -> None:
+        rest = self._rest if rest is None else rest
+        names = self._names if names is None else names
+        if rest is None:
             return
         missing = (
             {str(getattr(message, "sender_id", "") or "") for message in messages}
-            - self._names.keys()
+            - names.keys()
             - {""}
         )
         if not missing:
             return
         try:
-            users = await self._rest.person.get_person_infos_batch(sorted(missing))
-            self._names.update({user.uid: user.name for user in users if user.name})
+            users = await rest.person.get_person_infos_batch(sorted(missing))
+            names.update({user.uid: user.name for user in users if user.name})
         except Exception as exc:
             # A message remains usable with its short UID if profile lookup fails.
             LOGGER.debug("Oopz person name lookup failed", exc_info=exc)
 
-    async def _handle_ws_message(self, raw: str) -> None:
+    async def _handle_ws_message(
+        self, raw: str, *, generation=None, settings=None, rest=None, names=None
+    ) -> None:
+        generation = self._generation if generation is None else generation
+        if generation != self._generation:
+            return
+        settings = settings or self._settings
+        names = self._names if names is None else names
         try:
             event = self._parser.parse(raw)
         except Exception as exc:
@@ -285,27 +445,41 @@ class GatewayRuntime:
         if not isinstance(event, MessageEvent):
             return
         message = event.message
-        if (
-            message.area != self._settings.area_id
-            or message.channel != self._settings.channel_id
-        ):
+        if message.area != settings.area_id or message.channel != settings.channel_id:
             return
-        await self._resolve_names([message])
-        self.callbacks.live_timeline(
+        await self._resolve_names([message], rest=rest, names=names)
+        self._emit(
+            "live_timeline",
             [
                 map_message(
                     message,
-                    names=self._names,
-                    own_uid=self._settings.person_uid,
+                    names=names,
+                    own_uid=settings.person_uid,
                 )
-            ]
+            ],
+            generation=generation,
         )
 
     def send(self, text: str) -> None:
-        self._submit(self._send(text), error=self.callbacks.send_error)
+        generation = self._generation
+        settings = self._settings
+        outgoing = OutgoingMessage(
+            text, settings.area_id, settings.channel_id, person_uid=settings.person_uid
+        )
+        self._submit(
+            self._send(text, generation=generation),
+            success=lambda _: self._emit("sent", outgoing, generation=generation),
+            error=lambda error: self._emit(
+                "send_failed", replace(outgoing, error=error), generation=generation
+            ),
+        )
 
-    async def _send(self, text: str) -> None:
-        if self._rest is None:
+    async def _send(self, text: str, *, generation: int | None = None) -> None:
+        if (
+            self._rest is None
+            or not self._ready
+            or (generation is not None and generation != self._generation)
+        ):
             raise RuntimeError("尚未连接 Oopz")
         await self._rest.messages.send_message(
             text,
@@ -314,9 +488,16 @@ class GatewayRuntime:
         )
 
     async def _disconnect(self) -> None:
+        self._ready = False
+        tasks = tuple(self._history_tasks)
+        for task in tasks:
+            task.cancel()
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
+        self._history_tasks.clear()
         if self._ws is not None:
             try:
-                await self._ws.stop()
+                await asyncio.wait_for(self._ws.stop(), timeout=3)
             except Exception as exc:
                 LOGGER.debug("Oopz websocket stop failed", exc_info=exc)
             self._ws = None
@@ -330,8 +511,12 @@ class GatewayRuntime:
                 LOGGER.debug("Oopz websocket task ended with an error", exc_info=exc)
             self._ws_task = None
         if self._rest is not None:
-            await self._rest.close()
+            rest = self._rest
             self._rest = None
+            try:
+                await asyncio.wait_for(rest.close(), timeout=3)
+            except Exception as exc:
+                LOGGER.debug("REST cleanup failed: %s", type(exc).__name__)
 
     async def _shutdown(self) -> None:
         current = asyncio.current_task()
@@ -357,3 +542,5 @@ class GatewayRuntime:
             LOGGER.debug("Oopz gateway shutdown timed out", exc_info=exc)
         self._loop.call_soon_threadsafe(self._loop.stop)
         self._thread.join(timeout=5)
+        if not self._thread.is_alive():
+            self._loop.close()
