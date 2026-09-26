@@ -229,11 +229,28 @@ def run_update_helper(arguments: list[str]) -> int:
         _record_update_error(pending_path, 21, "download verification failed")
         _launch_target(target)
         return 21
-    if not _replace_with_retry(source, target):
+    # os.replace cannot cross Windows volumes. Stage a verified copy next to
+    # the installed executable, then replace it atomically on that volume.
+    replaced = False
+    try:
+        with tempfile.TemporaryDirectory(
+            prefix=".zhitiao-update-", dir=target.parent
+        ) as directory:
+            staged = Path(directory) / target.name
+            shutil.copyfile(source, staged)
+            if _verify_file(staged, expected_sha, expected_size):
+                replaced = _replace_with_retry(staged, target)
+    except OSError:
+        pass
+    if not replaced:
         pending_path.unlink(missing_ok=True)
-        _record_update_error(pending_path, 22, "target executable remained locked")
+        _record_update_error(pending_path, 22, "could not verify or replace executable")
         _launch_target(target)
         return 22
+    try:
+        source.unlink(missing_ok=True)
+    except OSError:
+        pass
     pending_path.unlink(missing_ok=True)
     error_path.unlink(missing_ok=True)
     _launch_target(target)

@@ -15,7 +15,7 @@ import traceback
 from ctypes import wintypes
 from pathlib import Path
 
-from PySide6.QtCore import QObject, QTimer, Signal
+from PySide6.QtCore import QObject, QTimer, Qt, Signal
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication, QLabel, QLineEdit, QVBoxLayout, QWidget
 
@@ -164,9 +164,25 @@ def probe(app: QApplication, output: Path) -> int:
                 )
                 if mode == 1 and cycle == 0:
                     scroll = overlay.history.verticalScrollBar()
+                    # The VM can deliver F8 before the hook worker and the
+                    # active layout have settled. Observe readiness first.
+                    deadline = time.monotonic() + 2
+                    while time.monotonic() < deadline:
+                        QTest.qWait(30)
+                        if (
+                            wheel._hook
+                            and scroll.value() == scroll.maximum()
+                            and not overlay.history_navigation.isVisible()
+                        ):
+                            break
+                    assert wheel._hook, "active mouse hook did not start"
+                    assert not overlay.history_navigation.isVisible()
                     previous = scroll.value()
                     user32.mouse_event(0x0800, 0, 0, 120, 0)
-                    QTest.qWait(250)
+                    deadline = time.monotonic() + 1
+                    while not received_wheel and time.monotonic() < deadline:
+                        QTest.qWait(30)
+                    QTest.qWait(160)
                     result["wheel_probe"] = {
                         "before": previous,
                         "after": scroll.value(),
@@ -182,6 +198,20 @@ def probe(app: QApplication, output: Path) -> int:
                         "global wheel not delivered"
                     )
                     overlay.grab().save(str(output / "hud-windows.png"))
+                    assert overlay.history_navigation.isVisible()
+                    overlay.input.setText("keep draft")
+                    QTest.mouseClick(
+                        overlay.history_navigation.latest, Qt.MouseButton.LeftButton
+                    )
+                    QTest.qWait(150)
+                    assert scroll.value() == scroll.maximum()
+                    assert not overlay.history_navigation.isVisible()
+                    assert overlay.input.text() == "keep draft" and overlay.is_active
+                    assert int(user32.GetForegroundWindow() or 0) == int(
+                        overlay.winId()
+                    )
+                    overlay.input.clear()
+                    result["checks"].append("history-return-preserves-draft-and-focus")
                 QTest.keyClicks(overlay.input, "native input")
                 key(0x0D if cycle % 2 == 0 else 0x1B)
                 assert not overlay.is_active, "input did not close"
@@ -232,6 +262,12 @@ def probe(app: QApplication, output: Path) -> int:
         dialog.show()
         app.processEvents()
         dialog.grab().save(str(output / "settings-windows.png"))
+        dialog._apply_theme(Qt.ColorScheme.Dark)
+        app.processEvents()
+        dialog.grab().save(str(output / "settings-dark-windows.png"))
+        dialog.resize(440, 760)
+        app.processEvents()
+        dialog.grab().save(str(output / "settings-narrow-windows.png"))
         dialog.close()
         result["passed"] = True
     except Exception:

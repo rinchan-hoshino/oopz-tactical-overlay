@@ -44,9 +44,9 @@ def test_overlay_keeps_the_window_background_transparent(monkeypatch) -> None:
     image = window.grab().toImage()
     blank = image.pixelColor(image.width() - 2, 2)
     input_center = window.input.mapTo(window, window.input.rect().center())
-    input_line_local = window.input.rect().center()
-    input_line_local.setY(window.input.rect().bottom())
-    input_line = window.input.mapTo(window, input_line_local)
+    input_line_local = window.composer.rect().center()
+    input_line_local.setY(0)
+    input_line = window.composer.mapTo(window, input_line_local)
 
     assert blank.alpha() == 0
     assert image.pixelColor(input_center).alpha() == window.backdrop_alpha
@@ -182,14 +182,22 @@ def test_passive_always_tracks_latest_while_active_preserves_scroll() -> None:
     scroll_bar = window.history.verticalScrollBar()
     assert scroll_bar.value() == scroll_bar.maximum()
     assert scroll_bar.maximum() > 0
+    assert not window.history_navigation.isVisible()
 
     window.show_overlay()
     app.processEvents()
+    window.input.setText("保留草稿")
     scroll_bar.setValue(0)
     window.merge_messages([ChatMessage("31", 31, "u", "风屿", "最新消息", False)])
     app.processEvents()
     assert scroll_bar.value() == 0
     assert scroll_bar.value() < scroll_bar.maximum()
+    assert window.history_navigation.isVisible()
+    window.history_navigation.latest.click()
+    app.processEvents()
+    assert scroll_bar.value() == scroll_bar.maximum()
+    assert not window.history_navigation.isVisible()
+    assert window.input.text() == "保留草稿" and window.is_active
 
     window.hide_overlay()
     app.processEvents()
@@ -209,7 +217,7 @@ def test_passive_history_is_visible_but_click_through() -> None:
     assert window.isVisible()
     assert not window.is_active
     assert not hasattr(window, "shield")
-    assert window.input.isVisible()
+    assert not window.input.isVisible()
     assert window.input.isEnabled()
     assert window.input.isReadOnly()
     assert window.input.focusPolicy() == Qt.FocusPolicy.NoFocus
@@ -250,13 +258,15 @@ def test_history_input_and_drag_surface_share_one_persisted_width() -> None:
     app.processEvents()
 
     assert window.width() == 500
-    assert window.history.width() == window.input.width()
+    window.show_overlay()
+    app.processEvents()
+    assert window.history.width() == window.composer.width()
 
     window.begin_edit_mode()
     app.processEvents()
     assert window.width() == 500
     assert window.editor.width() == window.width()
-    assert window.history.width() == window.input.width()
+    assert window.history.width() == window.composer.width()
     window.cancel_edit()
 
     window.configure(AppSettings(always_visible=False))

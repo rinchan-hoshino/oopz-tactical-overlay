@@ -10,8 +10,8 @@ from dataclasses import replace
 from pathlib import Path
 from tempfile import TemporaryDirectory, gettempdir
 
-from PySide6.QtCore import QObject, Qt, QTimer, Signal
-from PySide6.QtGui import QColor, QFont, QIcon, QPainter, QPixmap
+from PySide6.QtCore import QObject, QTimer, Signal
+from PySide6.QtGui import QFont, QIcon
 from PySide6.QtWidgets import (
     QApplication,
     QMenu,
@@ -33,7 +33,8 @@ from .updater import (
     stage_update,
     start_pending_update,
 )
-from .widgets import FONT_FAMILY, OverlayWindow
+from .widgets import OverlayWindow
+from .ui_common import APP_NAME, FONT_FAMILY, app_icon
 from .settings_dialog import SetupDialog
 from .win32_input import GlobalHotkeyRegistration, GlobalWheelRegistration
 
@@ -169,19 +170,7 @@ class AppController(QObject):
 
     @staticmethod
     def _icon() -> QIcon:
-        pixmap = QPixmap(64, 64)
-        pixmap.fill(Qt.GlobalColor.transparent)
-        painter = QPainter(pixmap)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        painter.setBrush(QColor("#d5a84b"))
-        painter.setPen(Qt.PenStyle.NoPen)
-        painter.drawRoundedRect(4, 4, 56, 56, 14, 14)
-        painter.setPen(QColor("#17130b"))
-        font = QFont(FONT_FAMILY, 30, QFont.Weight.Bold)
-        painter.setFont(font)
-        painter.drawText(pixmap.rect(), Qt.AlignmentFlag.AlignCenter, "O")
-        painter.end()
-        return QIcon(pixmap)
+        return app_icon()
 
     def _activate_overlay(self) -> None:
         if self.overlay.is_active or self.overlay.is_editing:
@@ -199,6 +188,7 @@ class AppController(QObject):
         )
         if self.overlay.is_active and self._failed_drafts[key]:
             self.overlay.input.setText(self._failed_drafts[key].popleft())
+            self.overlay.composer.set_failed(True)
             self.overlay.input.end(False)
 
     def _toggle_visibility(self) -> None:
@@ -513,7 +503,7 @@ class AppController(QObject):
         }
         self._warnings[text] = now
         self.tray.showMessage(
-            "Oopz 战术对话栏",
+            APP_NAME,
             text,
             QSystemTrayIcon.MessageIcon.Warning,
             5000,
@@ -562,11 +552,11 @@ class AppController(QObject):
             self.setup_dialog.set_update_status(text)
 
     def _update_tray_tooltip(self) -> None:
-        self.tray.setToolTip(f"Oopz 战术对话栏 v{__version__}\n{self._update_status}")
+        self.tray.setToolTip(f"{APP_NAME} v{__version__}\n{self._update_status}")
 
     def _on_update_ready(self, version: str) -> None:
         self.tray.showMessage(
-            "Oopz Tactical Link",
+            APP_NAME,
             f"{version} 已下载，将在下次启动时自动更新。",
             QSystemTrayIcon.MessageIcon.Information,
             5000,
@@ -673,6 +663,21 @@ def _smoke_test(app: QApplication) -> int:
     return 0
 
 
+def _render_settings(app: QApplication, path: Path) -> int:
+    settings = AppSettings(
+        area_id="preview",
+        area_name="猫尾服务器",
+        channel_id="preview",
+        channel_name="塔科夫",
+    )
+    dialog = SetupDialog(settings)
+    dialog.set_connection_status("# 塔科夫", True)
+    dialog.show()
+    app.processEvents()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    return 0 if dialog.grab().save(str(path), "PNG") else 5
+
+
 def _close_onefile_splash() -> None:
     parent_process = os.environ.get("NUITKA_ONEFILE_PARENT", "").strip()
     if parent_process.isdigit():
@@ -691,7 +696,7 @@ def _sdk_import_probe() -> int:
 
 def main() -> int:
     if os.name != "nt":
-        raise SystemExit("Oopz Tactical Overlay currently supports Windows only.")
+        raise SystemExit("纸条目前仅支持 Windows。")
     arguments = sys.argv[1:]
     if "--apply-update" in arguments:
         index = arguments.index("--apply-update")
@@ -706,7 +711,8 @@ def main() -> int:
     state_root = AppController._state_root()
 
     app = QApplication(sys.argv)
-    app.setApplicationName("Oopz Tactical Overlay")
+    app.setApplicationName(APP_NAME)
+    app.setWindowIcon(app_icon())
     app.setOrganizationName("RinChan")
     app.setFont(QFont(FONT_FAMILY))
     if "--smoke-test" in sys.argv:
@@ -718,6 +724,11 @@ def main() -> int:
         if index + 1 >= len(sys.argv):
             return 6
         return _render_preview(app, Path(sys.argv[index + 1]))
+    if "--render-settings" in sys.argv:
+        index = sys.argv.index("--render-settings")
+        if index + 1 >= len(sys.argv):
+            return 6
+        return _render_settings(app, Path(sys.argv[index + 1]))
     instance = SingleInstance(state_root)
     if not instance.acquire():
         _close_onefile_splash()

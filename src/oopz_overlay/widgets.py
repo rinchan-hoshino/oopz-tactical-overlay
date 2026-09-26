@@ -3,7 +3,6 @@ from __future__ import annotations
 import ctypes
 import os
 from ctypes import wintypes
-from datetime import UTC, datetime
 from time import monotonic
 
 from PySide6.QtCore import (
@@ -11,33 +10,24 @@ from PySide6.QtCore import (
     QEasingCurve,
     QEvent,
     QPoint,
-    QPointF,
     QPropertyAnimation,
-    QRectF,
     QSize,
     Qt,
     QTimer,
-    QVariantAnimation,
     Signal,
 )
 from PySide6.QtGui import (
     QCloseEvent,
     QColor,
-    QFont,
     QFontMetricsF,
     QGuiApplication,
     QMouseEvent,
     QPainter,
-    QPainterPath,
-    QPalette,
-    QPen,
-    QTextLayout,
 )
 from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
     QLabel,
-    QLineEdit,
     QListWidget,
     QListWidgetItem,
     QPushButton,
@@ -62,19 +52,27 @@ from .win32_input import (
 )
 
 from .ui_common import (
+    APP_NAME,
     ACCENT,
-    ACCENT_HOT,
     TEXT,
     DANGER,
     FONT_FAMILY,
     _ui_font,
-    _with_opacity,
 )
 from .settings_dialog import (
     HotkeyRecorder as HotkeyRecorder,
     SetupDialog as SetupDialog,
 )
-from .text_effect import TextOutlineEffect
+
+from .message_widgets import (
+    HistoryNavigation,
+    message_time,
+    MessageComposer,
+    MessageRow as MessageRow,
+    OutlinedLabel as OutlinedLabel,
+    OutlinedLineEdit as OutlinedLineEdit,
+    _outline_width_for_font as _outline_width_for_font,
+)
 
 
 class DragSurface(QLabel):
@@ -114,7 +112,7 @@ class EditorBar(QFrame):
             f"""
             QFrame#hudEditor {{ background: rgba(32,33,36,242); border: 1px solid {ACCENT}; border-radius: 8px; }}
             QPushButton {{ background: #34363c; color: {TEXT}; border: 1px solid #5a5d65; border-radius: 5px; padding: 5px 12px; }}
-            QPushButton#done {{ background: #2563eb; border-color: #3b82f6; color: white; }}
+            QPushButton#done {{ background: #b4c68b; border-color: #b4c68b; color: #20281a; }}
             """
         )
         layout = QHBoxLayout(self)
@@ -130,240 +128,6 @@ class EditorBar(QFrame):
         self.done_button.setObjectName("done")
         self.done_button.clicked.connect(self.accepted.emit)
         layout.addWidget(self.done_button)
-
-
-def _outlined_text_path(
-    text: str,
-    font: QFont,
-    rect: QRectF,
-    *,
-    word_wrap: bool,
-    x_override: float | None = None,
-) -> QPainterPath:
-    path = QPainterPath()
-    if not text:
-        return path
-    metrics = QFontMetricsF(font)
-    if not word_wrap:
-        x = rect.left() if x_override is None else x_override
-        baseline = (
-            rect.top() + (rect.height() - metrics.height()) / 2 + metrics.ascent()
-        )
-        path.addText(QPointF(x, baseline), font, text)
-        return path
-
-    layout = QTextLayout(text, font)
-    layout.beginLayout()
-    y = 0.0
-    lines = []
-    while True:
-        line = layout.createLine()
-        if not line.isValid():
-            break
-        line.setLineWidth(max(1.0, rect.width()))
-        line.setPosition(QPointF(0.0, y))
-        lines.append(line)
-        y += line.height()
-    layout.endLayout()
-    # QTextLayout indexes UTF-16 code units, while Python indexes Unicode points.
-    # Using Python slices here drops or repeats text after an emoji on wrapped lines.
-    utf16 = text.encode("utf-16-le")
-    for line in lines:
-        start = line.textStart() * 2
-        end = start + line.textLength() * 2
-        segment = utf16[start:end].decode("utf-16-le")
-        baseline = rect.top() + line.y() + line.ascent()
-        path.addText(QPointF(rect.left() + line.x(), baseline), font, segment)
-    return path
-
-
-def _outline_width_for_font(font: QFont) -> float:
-    point_size = font.pointSizeF()
-    if point_size <= 0:
-        point_size = 12.0
-    return max(1.0, min(1.7, point_size * 0.1))
-
-
-def _paint_outlined_path(
-    painter: QPainter,
-    path: QPainterPath,
-    fill: QColor,
-    stroke_width: float,
-) -> None:
-    painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
-    stroke = QColor("#000000")
-    stroke.setAlpha(fill.alpha())
-    painter.strokePath(
-        path,
-        QPen(
-            stroke,
-            stroke_width,
-            Qt.PenStyle.SolidLine,
-            Qt.PenCapStyle.RoundCap,
-            Qt.PenJoinStyle.RoundJoin,
-        ),
-    )
-    painter.fillPath(path, fill)
-
-
-class OutlinedLabel(QLabel):
-    def __init__(self, text: str = "", parent: QWidget | None = None) -> None:
-        super().__init__(text, parent)
-        self.setTextFormat(Qt.TextFormat.PlainText)
-        self.setContentsMargins(2, 1, 2, 1)
-
-    def paintEvent(self, event) -> None:
-        del event
-        painter = QPainter(self)
-        painter.setClipRect(self.contentsRect())
-        path = _outlined_text_path(
-            self.text(),
-            self.font(),
-            QRectF(self.contentsRect()),
-            word_wrap=self.wordWrap(),
-        )
-        _paint_outlined_path(
-            painter,
-            path,
-            self.palette().color(QPalette.ColorRole.WindowText),
-            _outline_width_for_font(self.font()),
-        )
-
-
-class OutlinedLineEdit(QLineEdit):
-    def __init__(self, parent: QWidget | None = None) -> None:
-        super().__init__(parent)
-        self._preedit = ""
-        self._text_opacity = 100
-        palette = self.palette()
-        transparent = QColor(0, 0, 0, 0)
-        palette.setColor(QPalette.ColorRole.Text, QColor(TEXT))
-        palette.setColor(QPalette.ColorRole.HighlightedText, QColor(TEXT))
-        palette.setColor(QPalette.ColorRole.PlaceholderText, transparent)
-        self.setPalette(palette)
-        self.setGraphicsEffect(TextOutlineEffect(self))
-
-    @property
-    def is_composing(self) -> bool:
-        return bool(self._preedit)
-
-    def inputMethodEvent(self, event) -> None:
-        super().inputMethodEvent(event)
-        self._preedit = event.preeditString()
-        self.update()
-
-    def set_text_opacity(self, percentage: int) -> None:
-        self._text_opacity = max(20, min(100, percentage))
-        palette = self.palette()
-        palette.setColor(QPalette.ColorRole.Text, QColor(TEXT))
-        palette.setColor(QPalette.ColorRole.HighlightedText, QColor(TEXT))
-        self.setPalette(palette)
-        self.graphicsEffect().set_opacity(self._text_opacity / 100)
-        self.update()
-
-    def rendered_text(self) -> str:
-        text = self.text()
-        if not self._preedit:
-            return text
-        cursor = self.cursorPosition()
-        return f"{text[:cursor]}{self._preedit}{text[cursor:]}"
-
-    def rendered_text_origin_x(self) -> float:
-        cursor = self.cursorPosition()
-        prefix = self.text()[:cursor]
-        if self._preedit:
-            prefix += self._preedit
-        return float(self.cursorRect().x()) - QFontMetricsF(
-            self.font()
-        ).horizontalAdvance(prefix)
-
-    def paintEvent(self, event) -> None:
-        super().paintEvent(event)
-        if self.hasFocus() and not self.isReadOnly():
-            # Qt can suppress its caret on a translucent tool window. Use its
-            # native cursor rectangle; text layout and hit testing stay native.
-            rect = self.cursorRect()
-            painter = QPainter(self)
-            painter.fillRect(
-                rect.center().x(), rect.top(), 2, rect.height(), QColor(ACCENT_HOT)
-            )
-
-
-class MessageRow(QWidget):
-    def __init__(
-        self,
-        message: ChatMessage,
-        font_size: int = 12,
-        text_opacity: int = 100,
-        highlight: bool = False,
-        parent: QWidget | None = None,
-    ) -> None:
-        super().__init__(parent)
-        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
-        self._highlight_alpha = 0
-        self._highlight_animation = QVariantAnimation(self)
-        self._highlight_animation.setDuration(1400)
-        self._highlight_animation.setEasingCurve(QEasingCurve.Type.OutCubic)
-        self._highlight_animation.valueChanged.connect(self._set_highlight_alpha)
-        if highlight:
-            self._highlight_alpha = 92
-            self._highlight_animation.setStartValue(92)
-            self._highlight_animation.setEndValue(0)
-            self._highlight_animation.start()
-        layout = QHBoxLayout(self)
-        layout.setContentsMargins(3, 1, 3, 1)
-        layout.setSpacing(6)
-
-        moment = ""
-        if message.timestamp_us:
-            seconds = message.timestamp_us / 1_000_000
-            try:
-                moment = (
-                    datetime.fromtimestamp(seconds, tz=UTC)
-                    .astimezone()
-                    .strftime("%H:%M")
-                )
-            except (ValueError, OverflowError, OSError):
-                moment = ""
-        sender = OutlinedLabel(f"{moment}  {message.sender_name}")
-        sender.setFont(_ui_font(font_size, QFont.Weight.Bold))
-        sender_palette = sender.palette()
-        sender_palette.setColor(
-            QPalette.ColorRole.WindowText,
-            _with_opacity(ACCENT_HOT if message.mine else "#b7c4b1", text_opacity),
-        )
-        sender.setPalette(sender_palette)
-        sender.setStyleSheet("background:transparent;")
-        text = OutlinedLabel(message.text)
-        text.setWordWrap(True)
-        text.setFont(_ui_font(font_size))
-        text_palette = text.palette()
-        text_palette.setColor(
-            QPalette.ColorRole.WindowText,
-            _with_opacity(TEXT, text_opacity),
-        )
-        text.setPalette(text_palette)
-        text.setStyleSheet("background:transparent;")
-        layout.addWidget(sender, 0, Qt.AlignmentFlag.AlignTop)
-        layout.addWidget(text, 1, Qt.AlignmentFlag.AlignTop)
-
-    @property
-    def highlight_alpha(self) -> int:
-        return self._highlight_alpha
-
-    def _set_highlight_alpha(self, value) -> None:
-        self._highlight_alpha = int(value)
-        self.update()
-
-    def paintEvent(self, event) -> None:
-        if self._highlight_alpha:
-            painter = QPainter(self)
-            painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
-            painter.setPen(Qt.PenStyle.NoPen)
-            painter.setBrush(QColor(226, 195, 111, self._highlight_alpha))
-            painter.drawRoundedRect(self.rect().adjusted(1, 0, -1, 0), 5, 5)
-            painter.end()
-        super().paintEvent(event)
 
 
 class OverlayWindow(QWidget):
@@ -389,7 +153,7 @@ class OverlayWindow(QWidget):
             os.name == "nt"
             and QGuiApplication.platformName() not in {"offscreen", "minimal"}
         )
-        self.setWindowTitle("Oopz Tactical Link")
+        self.setWindowTitle(f"{APP_NAME} · 消息")
         self.timeline = ChatTimeline(limit=80)
         self.intent = OverlayIntent()
         self._connected = False
@@ -430,7 +194,7 @@ class OverlayWindow(QWidget):
             "QListWidget { background: transparent; border: none; outline: none; }"
             "QListWidget::item { background: transparent; border: none; }"
             "QScrollBar:vertical { background: transparent; width: 6px; margin: 0; }"
-            "QScrollBar::handle:vertical { background: rgba(226,195,111,190); border-radius: 3px; min-height: 22px; }"
+            "QScrollBar::handle:vertical { background: rgba(180,198,139,170); border-radius: 3px; min-height: 22px; }"
             "QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; }"
             "QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical { background: transparent; }"
         )
@@ -441,31 +205,23 @@ class OverlayWindow(QWidget):
         self._scroll_animation.setEasingCurve(QEasingCurve.Type.OutCubic)
         root.addWidget(self.history, 1)
 
-        self.input = OutlinedLineEdit()
-        self.input.setMaxLength(500)
+        self.history_navigation = HistoryNavigation()
+        self.history_navigation.hide()
+        self.history_navigation.latest_requested.connect(self._return_to_latest)
+        root.addWidget(self.history_navigation)
+        scroll_bar.valueChanged.connect(self._update_history_navigation)
+        scroll_bar.rangeChanged.connect(self._update_history_navigation)
+
+        self.composer = MessageComposer()
+        self.input = self.composer.edit
+        self.composer.configure(self._settings)
+        self.composer.hide()
         self.input.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.input.setReadOnly(True)
         self.input.returnPressed.connect(self._submit)
         self.input.installEventFilter(self)
         self.history.viewport().installEventFilter(self)
-        self.input.setStyleSheet(
-            """
-            QLineEdit {
-                background: transparent; border: none;
-                border-bottom: 1px solid rgba(185,163,106,180);
-                border-radius: 0; padding: 4px 8px;
-                selection-background-color: rgba(185,163,106,170);
-                selection-color: #ffffff;
-            }
-            QLineEdit:focus { border-bottom: 2px solid #e2c36f; }
-            QLineEdit:disabled { border-bottom: 1px solid rgba(185,163,106,105); }
-            """
-        )
-        input_row = QHBoxLayout()
-        input_row.setContentsMargins(0, 0, 0, 0)
-        input_row.setSpacing(0)
-        input_row.addWidget(self.input, 1)
-        root.addLayout(input_row)
+        root.addWidget(self.composer)
         self.resize_grip = QSizeGrip(self)
         self.resize_grip.setFixedSize(18, 18)
         self.resize_grip.hide()
@@ -495,6 +251,7 @@ class OverlayWindow(QWidget):
 
     def configure(self, settings: AppSettings) -> None:
         self._settings = settings
+        self.composer.configure(settings)
         self._apply_font_size(settings.font_size)
         self.input.set_text_opacity(settings.text_opacity)
         self.update()
@@ -622,15 +379,15 @@ class OverlayWindow(QWidget):
             return
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
-        color = QColor(8, 10, 14, max(alpha, 155) if self._editing else alpha)
+        color = QColor(10, 17, 16, max(alpha, 155) if self._editing else alpha)
         painter.setPen(Qt.PenStyle.NoPen)
         painter.setBrush(color)
-        painter.drawRoundedRect(self.rect().adjusted(3, 3, -3, -3), 9, 9)
+        painter.drawRoundedRect(self.rect().adjusted(3, 3, -3, -3), 5, 5)
 
     def _apply_font_size(self, font_size: int) -> None:
         self.input.setFont(_ui_font(font_size))
-        input_height = QFontMetricsF(self.input.font()).height() + 16
-        self.input.setFixedHeight(max(35, round(input_height)))
+        input_height = QFontMetricsF(self.input.font()).height() + 8
+        self.input.setFixedHeight(max(30, round(input_height)))
         if self.timeline.items:
             self._render_timeline()
 
@@ -645,6 +402,28 @@ class OverlayWindow(QWidget):
             else Qt.ScrollBarPolicy.ScrollBarAlwaysOff
         )
         self.history.setVerticalScrollBarPolicy(policy)
+        self._update_history_navigation()
+
+    def _update_history_navigation(self, *_args) -> None:
+        scroll = self.history.verticalScrollBar()
+        browsing = self._active and scroll.value() < scroll.maximum() - 2
+        self.history_navigation.setVisible(browsing)
+        if browsing:
+            item = self.history.itemAt(QPoint(1, 1))
+            index = self.history.row(item) if item is not None else -1
+            messages = self.timeline.items
+            self.history_navigation.time.setText(
+                message_time(messages[index].timestamp_us)
+                if 0 <= index < len(messages)
+                else ""
+            )
+
+    def _return_to_latest(self) -> None:
+        self._stop_scroll_animation()
+        self.history_navigation.hide()
+        self.history.scrollToBottom()
+        self._scroll_target = self.history.verticalScrollBar().maximum()
+        self.input.setFocus(Qt.FocusReason.MouseFocusReason)
 
     def _stop_scroll_animation(self) -> None:
         self._scroll_animation.stop()
@@ -731,6 +510,8 @@ class OverlayWindow(QWidget):
         self.editor.hide()
         self.resize_grip.hide()
         self.status.hide()
+        self.composer.hide()
+        self.composer.set_failed(False)
         self.input.clearFocus()
         self.input.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.input.setReadOnly(True)
@@ -752,6 +533,7 @@ class OverlayWindow(QWidget):
         self._active = True
         self._editing = False
         self._activation_guard = True
+        self.composer.show()
         self.editor.hide()
         self.input.setEnabled(self._connected)
         self.input.setReadOnly(not self._connected)
@@ -808,6 +590,8 @@ class OverlayWindow(QWidget):
         self.resize_grip.show()
         self.resize_grip.raise_()
         self.status.hide()
+        self.composer.hide()
+        self.composer.set_failed(False)
         self.input.clearFocus()
         self.input.setReadOnly(True)
         self.input.setEnabled(False)

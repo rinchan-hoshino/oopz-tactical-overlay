@@ -142,7 +142,7 @@ def test_settings_refresh_cancels_recording_and_releases_hotkey_pause():
 def test_wrapped_message_preserves_every_character_after_emoji(monkeypatch):
     from PySide6.QtCore import QRectF
     from PySide6.QtGui import QFont
-    from oopz_overlay.widgets import _outlined_text_path
+    from oopz_overlay.message_widgets import _outlined_text_path
 
     app = QApplication.instance() or QApplication([])
     drawn = []
@@ -151,7 +151,7 @@ def test_wrapped_message_preserves_every_character_after_emoji(monkeypatch):
         def addText(self, point, font, text):
             drawn.append(text)
 
-    monkeypatch.setattr("oopz_overlay.widgets.QPainterPath", CapturedPath)
+    monkeypatch.setattr("oopz_overlay.message_widgets.QPainterPath", CapturedPath)
     text = "队友😀 已到二楼，请等一下🚩现在从右侧进入，收到✅"
     _outlined_text_path(
         text, QFont("Microsoft YaHei UI", 12), QRectF(0, 0, 110, 300), word_wrap=True

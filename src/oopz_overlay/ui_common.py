@@ -1,16 +1,60 @@
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QColor, QFont, QKeyEvent
+from PySide6.QtGui import (
+    QColor,
+    QFont,
+    QIcon,
+    QKeyEvent,
+    QPainter,
+    QPainterPath,
+    QPen,
+    QPixmap,
+)
 from .win32_input import parse_hotkey
 
-ACCENT = "#60a5fa"
-ACCENT_HOT = "#93c5fd"
-TEXT = "#f3f4f6"
+APP_NAME = "纸条"
+ACCENT = "#657247"
+ACCENT_HOT = "#b4c68b"
+TEXT = "#fffef8"
 MUTED = "#9ca3af"
 SURFACE = "#202124"
 SURFACE_2 = "#2a2c31"
 BORDER = "#3d4046"
 DANGER = "#f28b82"
 FONT_FAMILY = "Microsoft YaHei UI"
+
+
+def app_icon() -> QIcon:
+    """One vector drawing for the window, tray and packaged application."""
+    pixmap = QPixmap(256, 256)
+    pixmap.fill(Qt.GlobalColor.transparent)
+    painter = QPainter(pixmap)
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+    painter.setPen(Qt.PenStyle.NoPen)
+    painter.setBrush(QColor(ACCENT))
+    painter.drawRoundedRect(8, 8, 240, 240, 58, 58)
+    paper = QPainterPath()
+    paper.moveTo(69, 49)
+    paper.lineTo(147, 49)
+    paper.lineTo(189, 91)
+    paper.lineTo(189, 207)
+    paper.lineTo(69, 207)
+    paper.closeSubpath()
+    painter.setBrush(QColor("#f4f5e9"))
+    painter.drawPath(paper)
+    fold = QPainterPath()
+    fold.moveTo(147, 49)
+    fold.lineTo(147, 91)
+    fold.lineTo(189, 91)
+    fold.closeSubpath()
+    painter.setBrush(QColor("#cbd3b4"))
+    painter.drawPath(fold)
+    painter.setPen(
+        QPen(QColor(ACCENT), 8, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap)
+    )
+    painter.drawLine(93, 127, 163, 127)
+    painter.drawLine(93, 154, 145, 154)
+    painter.end()
+    return QIcon(pixmap)
 
 
 def _ui_font(point_size: int, weight: QFont.Weight = QFont.Weight.Normal) -> QFont:

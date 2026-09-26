@@ -39,7 +39,7 @@ def test_settings_keep_direct_controls_and_restore_manual_channel_selection() ->
         LoginResult(settings, destinations, "area", "猫尾服务器", True)
     )
 
-    assert dialog.windowTitle() == "Oopz 文字上屏"
+    assert dialog.windowTitle() == "纸条"
     assert dialog.version.text() == f"v{__version__}"
     assert dialog.server.text() == "猫尾服务器"
     assert dialog.destination.count() == 3
@@ -103,4 +103,53 @@ def test_hud_editor_is_an_explicit_staged_action() -> None:
 
     assert requested == [True]
     assert dialog.isHidden()
+    dialog.close()
+
+
+def test_preview_modes_are_local_and_do_not_save_or_send_messages() -> None:
+    app = QApplication.instance() or QApplication([])
+    dialog = SetupDialog(AppSettings(channel_name="塔科夫"))
+    changed = []
+    dialog.settings_changed.connect(changed.append)
+    dialog.show()
+    for mode in ("history", "failed", "input", "passive"):
+        dialog.mode_buttons[mode].click()
+        app.processEvents()
+        assert dialog.preview.mode == mode
+        assert dialog.preview.composer.isVisible() == (
+            mode in {"failed", "input", "history"}
+        )
+    dialog.preview.set_mode("failed")
+    draft = dialog.preview.composer.edit.text()
+    dialog.preview.composer.edit.returnPressed.emit()
+    assert dialog.preview.composer.edit.text() == draft
+    assert changed == []
+    dialog.close()
+
+
+def test_preview_keeps_readable_hud_colors_without_stale_rows_in_both_themes() -> None:
+    from PySide6.QtGui import QPalette
+    from oopz_overlay.message_widgets import MessageRow, OutlinedLabel
+
+    app = QApplication.instance() or QApplication([])
+    dialog = SetupDialog(AppSettings())
+    dialog.show()
+    for scheme in (Qt.ColorScheme.Light, Qt.ColorScheme.Dark):
+        dialog._apply_theme(scheme)
+        for size in (9, 16, 12):
+            dialog.font_size.setValue(size)
+        dialog.preview.set_mode("input")
+        app.processEvents()
+        rows = [
+            row for row in dialog.preview.findChildren(MessageRow) if row.isVisible()
+        ]
+        assert len(rows) == 3
+        for row in rows:
+            body = row.findChildren(OutlinedLabel)[1]
+            assert body.palette().color(QPalette.ColorRole.WindowText).lightness() > 200
+        dialog.resize(440, 600)
+        app.processEvents()
+        assert dialog.width() == 440
+        assert dialog._stacked
+        assert dialog.preview.width() <= dialog.width()
     dialog.close()

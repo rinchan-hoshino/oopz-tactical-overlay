@@ -3,12 +3,15 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import shutil
 import subprocess
 import sys
 import tomllib
 from datetime import UTC, datetime
 from pathlib import Path
+
+from oopz_overlay.ui_common import APP_NAME, app_icon
 
 ROOT = Path(__file__).resolve().parents[1]
 PRODUCT = "OopzTacticalOverlay"
@@ -32,6 +35,14 @@ def main() -> None:
             shutil.rmtree(directory, ignore_errors=True)
     dist.mkdir(parents=True, exist_ok=True)
     build.mkdir(parents=True, exist_ok=True)
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication
+
+    application = QApplication.instance() or QApplication([])
+    application.setApplicationName(APP_NAME)
+    icon_path = build / "zhitiao.ico"
+    if not app_icon().pixmap(256, 256).save(str(icon_path), "ICO"):
+        raise RuntimeError("Could not render the application icon")
 
     subprocess.run(
         [
@@ -42,16 +53,15 @@ def main() -> None:
             "--jobs=2",
             "--onefile-cache-mode=cached",
             f"--onefile-tempdir-spec={{CACHE_DIR}}/RinChan/{PRODUCT}/{{VERSION}}",
-            f"--onefile-windows-splash-screen-image={ROOT / 'assets' / 'splash.png'}",
             "--assume-yes-for-downloads",
             "--enable-plugin=pyside6",
             "--windows-console-mode=disable",
-            f"--windows-icon-from-ico={ROOT / 'assets' / 'icon.ico'}",
+            f"--windows-icon-from-ico={icon_path}",
             f"--output-dir={dist}",
             f"--output-filename={PRODUCT}.exe",
             "--company-name=RinChan",
-            "--product-name=Oopz Tactical Link",
-            "--file-description=Oopz tactical text HUD",
+            f"--product-name={APP_NAME}",
+            "--file-description=纸条 - 游戏消息",
             f"--file-version={windows_version}",
             f"--product-version={windows_version}",
             "--copyright=Copyright 2026 RinChan",
@@ -81,7 +91,7 @@ def main() -> None:
     manifest = {
         "schemaVersion": 1,
         "version": version,
-        "url": f"{PUBLIC_BASE}/{PRODUCT}.exe",
+        "url": f"{PUBLIC_BASE}/{version}/{PRODUCT}.exe",
         "sha256": digest,
         "size": target.stat().st_size,
         "publishedAt": datetime.now(UTC).isoformat(),

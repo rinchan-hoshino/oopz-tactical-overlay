@@ -49,8 +49,8 @@ if __name__ == "__main__":
 
             ctypes.windll.user32.MessageBoxW(
                 None,
-                "Oopz 文字上屏启动失败。可重新下载程序后再试，详细原因已记录在 startup.log。",
-                "Oopz 文字上屏",
+                "纸条启动失败，请重新下载后再试。详情见 startup.log。",
+                "纸条",
                 0x10,
             )
         raise
@@ -58,6 +58,7 @@ if __name__ == "__main__":
     one_shot_modes = {
         "--smoke-test",
         "--render-preview",
+        "--render-settings",
         "--sdk-import-probe",
     }
     if one_shot_modes.intersection(sys.argv):
