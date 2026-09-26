@@ -6,7 +6,12 @@ from PySide6.QtGui import QColor, QLinearGradient, QPainter, QPainterPath, QPoly
 from PySide6.QtWidgets import QFrame, QVBoxLayout, QWidget
 
 from .chat import ChatMessage
-from .message_widgets import HistoryNavigation, MessageComposer, MessageRow
+from .message_widgets import (
+    HistoryNavigation,
+    MessageComposer,
+    MessageRow,
+    sender_column_width,
+)
 from .settings import AppSettings
 
 
@@ -88,6 +93,18 @@ class HudPreview(QWidget):
             self.rows.addWidget(
                 MessageRow(message, self.settings.font_size, self.settings.text_opacity)
             )
+        self._resize_sender_column()
+
+    def _resize_sender_column(self) -> None:
+        margins = self.layout().contentsMargins() + self.hud.layout().contentsMargins()
+        row_width = self.contentsRect().width() - margins.left() - margins.right()
+        width = sender_column_width(self._messages, self.settings.font_size, row_width)
+        for index in range(self.rows.count()):
+            self.rows.itemAt(index).widget().set_sender_width(width)
+
+    def resizeEvent(self, event) -> None:
+        super().resizeEvent(event)
+        self._resize_sender_column()
 
     def _submit(self) -> None:
         edit = self.composer.edit

@@ -67,6 +67,7 @@ from .settings_dialog import (
 from .message_widgets import (
     HistoryNavigation,
     message_time,
+    sender_column_width,
     MessageComposer,
     MessageRow as MessageRow,
     OutlinedLabel as OutlinedLabel,
@@ -320,6 +321,7 @@ class OverlayWindow(QWidget):
         previous_scroll = scroll_bar.value()
         row_width = max(200, self.history.viewport().width())
         messages = self.timeline.items
+        sender_width = sender_column_width(messages, self._settings.font_size, row_width)
         wanted = {message.message_id for message in messages}
         for message_id in tuple(self._rendered_rows):
             if message_id not in wanted:
@@ -333,6 +335,7 @@ class OverlayWindow(QWidget):
                 self._settings.font_size,
                 self._settings.text_opacity,
                 row_width,
+                sender_width,
             )
             previous = self._rendered_rows.get(message.message_id)
             if previous is not None and previous[2] == signature:
@@ -348,6 +351,7 @@ class OverlayWindow(QWidget):
                 font_size=self._settings.font_size,
                 text_opacity=self._settings.text_opacity,
                 highlight=message.message_id in self._highlight_until,
+                sender_width=sender_width,
             )
             row.setFixedWidth(row_width)
             row.layout().activate()

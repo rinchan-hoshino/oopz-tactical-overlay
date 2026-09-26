@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from math import ceil
 from PySide6.QtCore import QEasingCurve, QPointF, QRectF, Qt, QVariantAnimation, Signal
 from PySide6.QtGui import (
     QColor,
@@ -11,6 +12,7 @@ from PySide6.QtGui import (
     QPalette,
     QPen,
     QTextLayout,
+    QTextOption,
 )
 from PySide6.QtWidgets import (
     QFrame,
@@ -39,6 +41,24 @@ def message_time(timestamp_us: int) -> str:
         return ""
 
 
+def _wrapped_text_layout(text: str, font: QFont, width: float) -> QTextLayout:
+    layout = QTextLayout(text, font)
+    option = QTextOption()
+    option.setWrapMode(QTextOption.WrapMode.WrapAtWordBoundaryOrAnywhere)
+    layout.setTextOption(option)
+    layout.beginLayout()
+    y = 0.0
+    while True:
+        line = layout.createLine()
+        if not line.isValid():
+            break
+        line.setLineWidth(max(1.0, width))
+        line.setPosition(QPointF(0.0, y))
+        y += line.height()
+    layout.endLayout()
+    return layout
+
+
 def _outlined_text_path(
     text: str,
     font: QFont,
@@ -59,23 +79,12 @@ def _outlined_text_path(
         path.addText(QPointF(x, baseline), font, text)
         return path
 
-    layout = QTextLayout(text, font)
-    layout.beginLayout()
-    y = 0.0
-    lines = []
-    while True:
-        line = layout.createLine()
-        if not line.isValid():
-            break
-        line.setLineWidth(max(1.0, rect.width()))
-        line.setPosition(QPointF(0.0, y))
-        lines.append(line)
-        y += line.height()
-    layout.endLayout()
+    layout = _wrapped_text_layout(text, font, rect.width())
     # QTextLayout indexes UTF-16 code units, while Python indexes Unicode points.
     # Using Python slices here drops or repeats text after an emoji on wrapped lines.
     utf16 = text.encode("utf-16-le")
-    for line in lines:
+    for index in range(layout.lineCount()):
+        line = layout.lineAt(index)
         start = line.textStart() * 2
         end = start + line.textLength() * 2
         segment = utf16[start:end].decode("utf-16-le")
@@ -118,6 +127,15 @@ class OutlinedLabel(QLabel):
         super().__init__(text, parent)
         self.setTextFormat(Qt.TextFormat.PlainText)
         self.setContentsMargins(2, 1, 2, 1)
+
+    def heightForWidth(self, width: int) -> int:
+        if not self.wordWrap():
+            return super().heightForWidth(width)
+        margins = self.contentsMargins()
+        layout = _wrapped_text_layout(
+            self.text(), self.font(), width - margins.left() - margins.right()
+        )
+        return ceil(layout.boundingRect().height()) + margins.top() + margins.bottom()
 
     def paintEvent(self, event) -> None:
         del event
@@ -271,6 +289,22 @@ class HistoryNavigation(QWidget):
         layout.addWidget(self.latest)
 
 
+def sender_column_width(
+    messages: list[ChatMessage], font_size: int, row_width: int
+) -> int:
+    """Fit the names while reserving at least 60% of the row for the message."""
+    metrics = QFontMetricsF(_ui_font(font_size, QFont.Weight.Medium))
+    natural_width = max(
+        (
+            metrics.horizontalAdvance("你" if m.mine else m.sender_name)
+            for m in messages
+        ),
+        default=0,
+    )
+    # Row margins and the column gap use 12 px; label margins use another 4 px.
+    return min(ceil(natural_width) + 4, max(1, int((row_width - 12) * 0.4)))
+
+
 class MessageRow(QWidget):
     def __init__(
         self,
@@ -279,6 +313,8 @@ class MessageRow(QWidget):
         text_opacity: int = 100,
         highlight: bool = False,
         parent: QWidget | None = None,
+        *,
+        sender_width: int | None = None,
     ) -> None:
         super().__init__(parent)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
@@ -300,11 +336,13 @@ class MessageRow(QWidget):
         name = "你" if message.mine else message.sender_name
         font = _ui_font(font_size, QFont.Weight.Medium)
         metrics = QFontMetricsF(font)
-        name_width = round(metrics.horizontalAdvance("字字字") + 4)
-        sender = OutlinedLabel(
-            metrics.elidedText(name, Qt.TextElideMode.ElideRight, name_width - 4)
+        sender = self._sender = OutlinedLabel(name)
+        sender.setWordWrap(True)
+        self.set_sender_width(
+            sender_width
+            if sender_width is not None
+            else ceil(metrics.horizontalAdvance(name)) + 4
         )
-        sender.setFixedWidth(name_width)
         sender.setToolTip(
             f"{message.sender_name} · {moment}" if moment else message.sender_name
         )
@@ -338,6 +376,9 @@ class MessageRow(QWidget):
         )
         layout.addWidget(sender, 0, Qt.AlignmentFlag.AlignTop)
         layout.addWidget(text, 1, Qt.AlignmentFlag.AlignTop)
+
+    def set_sender_width(self, width: int) -> None:
+        self._sender.setFixedWidth(width)
 
     @property
     def highlight_alpha(self) -> int:

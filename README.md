@@ -2,7 +2,7 @@
 
 Windows 游戏消息浮层。通过社区维护的 `oopz-sdk` 收发用户手动选择的 Oopz 文字频道消息。
 
-下载：[纸条 0.10.1](https://acv.k-neco.com/tools/oopz-tactical-overlay/Zhitiao.exe)。已有用户可从原启动入口自动升级，设置保持不变。
+下载：[纸条 0.10.2](https://acv.k-neco.com/tools/oopz-tactical-overlay/Zhitiao.exe)。已有用户可从原启动入口自动升级，设置保持不变。
 
 ## 使用
 
@@ -24,6 +24,7 @@ Windows 游戏消息浮层。通过社区维护的 `oopz-sdk` 收发用户手动
 - 文本透明度和 HUD 背景透明度分别调节。
 - 设置页跟随系统明暗主题；在亮景和暗景中预览平时、输入、回看和发送失败的效果。预览中的输入只用于演示。
 - 点击“调整位置与大小”进入编辑模式；只有点击“完成”才保存，点击“取消”恢复原位置和大小。
+- 昵称按实际长度分配宽度，过长时完整换行，正文保持对齐。
 - 平时只显示昵称和消息；按输入快捷键后才出现频道与输入行。
 - 激活输入时可用鼠标滚轮查看较早消息，此时显示时间和“回到最新”；退出输入后自动回到最新消息。
 - 实时新消息会短暂高亮；断线后自动重连并补取近期消息。
@@ -73,7 +74,7 @@ uv run python tools/native_windows_probe.py --output artifacts/native
 
 生成的程序位于 `release/OopzTacticalOverlay.exe`。构建会验证打包后的 SDK 导入；`--smoke-test` 可进一步检查界面、托盘和设置读写。
 
-重构约定见 [重构记录](docs/rebuild.md)，本次交付与验证见 [0.10.1 验证记录](docs/validation-0.10.1.md)。
+重构约定见 [重构记录](docs/rebuild.md)，本次交付与验证见 [0.10.2 验证记录](docs/validation-0.10.2.md)。
 发行时需完成[线上发布和旧版自动升级验收](docs/releasing.md)。
 旧版发行记录见 [0.9.1 验证记录](docs/validation-0.9.1.md)和[线上自动升级验证](docs/validation-update-0.9.1.md)。
 

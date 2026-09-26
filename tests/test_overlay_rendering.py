@@ -8,12 +8,13 @@ import pytest
 
 pytest.importorskip("PySide6")
 
-from PySide6.QtCore import QEvent, QPoint, QPointF, Qt
+from PySide6.QtCore import QEvent, QPoint, QPointF, QRectF, Qt
 from PySide6.QtGui import QKeyEvent, QPalette, QWheelEvent
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication
 
 from oopz_overlay.chat import ChatMessage
+from oopz_overlay.message_widgets import _outlined_text_path
 from oopz_overlay.settings import AppSettings
 from oopz_overlay.widgets import (
     MessageRow,
@@ -146,6 +147,78 @@ def test_message_body_uses_available_hud_width_before_wrapping() -> None:
     row.layout().activate()
     assert body.width() > 570
     row.deleteLater()
+    app.processEvents()
+
+
+def test_nickname_column_fits_names_and_reflows_existing_rows() -> None:
+    app = QApplication.instance() or QApplication([])
+    window = OverlayWindow()
+    window.configure(AppSettings(font_size=11, overlay_width=360, overlay_height=205))
+    window.set_connection_status("#测试", True)
+    window.merge_messages([ChatMessage("short", 1, "a", "小云", "晚安", False)])
+    window.show_passive()
+    QTest.qWait(100)
+    old_row = window.history.itemWidget(window.history.item(0))
+    old_width = old_row.findChildren(OutlinedLabel)[0].width()
+
+    window.merge_messages(
+        [
+            ChatMessage("longer", 2, "b", "沙丁鱼罐头", "收到", False),
+            ChatMessage("mixed", 3, "c", "梦awaken", "晚安团子", False),
+            ChatMessage("self", 4, "self", "我的真实昵称很长", "测试", True),
+        ]
+    )
+    app.processEvents()
+    rows = [window.history.itemWidget(window.history.item(i)) for i in range(4)]
+    labels = [row.findChildren(OutlinedLabel)[0] for row in rows]
+    assert [label.text() for label in labels] == [
+        "小云",
+        "沙丁鱼罐头",
+        "梦awaken",
+        "你",
+    ]
+    assert len({label.width() for label in labels}) == 1
+    assert labels[0].width() > old_width
+    for label in labels:
+        assert label.contentsRect().width() >= label.fontMetrics().horizontalAdvance(
+            label.text()
+        )
+        assert label.height() < 2 * label.fontMetrics().height()
+    window.hide()
+
+
+@pytest.mark.parametrize(
+    "name",
+    [
+        "如月的长昵称也要完整显示",
+        "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz",
+        "小云🎮今晚一起玩游戏",
+    ],
+)
+def test_long_nicknames_wrap_completely_without_crowding_the_body(name) -> None:
+    app = QApplication.instance() or QApplication([])
+    window = OverlayWindow()
+    window.configure(AppSettings(font_size=14, overlay_width=260, overlay_height=360))
+    window.set_connection_status("#测试", True)
+    window.merge_messages([ChatMessage("long", 1, "a", name, "晚安团子", False)])
+    window.show_passive()
+    QTest.qWait(100)
+    for width in (260, 560, 260):
+        window.resize(width, 360)
+        QTest.qWait(100)
+        assert window.isVisible() and window.width() == width
+        row = window.history.itemWidget(window.history.item(0))
+        sender, body = row.findChildren(OutlinedLabel)
+        assert sender.text() == name
+        assert body.width() >= (row.width() - 12) * 0.6
+        path = _outlined_text_path(
+            name, sender.font(), QRectF(sender.contentsRect()), word_wrap=True
+        )
+        assert path.boundingRect().bottom() <= sender.contentsRect().bottom() + 1
+        assert path.boundingRect().right() <= sender.contentsRect().right() + 1
+        assert window.history.item(0).sizeHint().height() >= sender.height()
+        assert row.width() <= window.history.viewport().width()
+    window.hide()
     app.processEvents()
 
 
