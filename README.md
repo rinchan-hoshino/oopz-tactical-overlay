@@ -2,7 +2,7 @@
 
 Windows 游戏消息浮层。通过社区维护的 `oopz-sdk` 收发用户手动选择的 Oopz 文字频道消息。
 
-下载：[纸条 0.10.2](https://acv.k-neco.com/tools/oopz-tactical-overlay/Zhitiao.exe)。已有用户可从原启动入口自动升级，设置保持不变。
+下载：[纸条 0.11.0](https://acv.k-neco.com/tools/oopz-tactical-overlay/Zhitiao.exe)。已有用户可从原启动入口自动升级，设置保持不变。
 
 ## 使用
 
@@ -28,6 +28,7 @@ Windows 游戏消息浮层。通过社区维护的 `oopz-sdk` 收发用户手动
 - 平时只显示昵称和消息；按输入快捷键后才出现频道与输入行。
 - 激活输入时可用鼠标滚轮查看较早消息，此时显示时间和“回到最新”；退出输入后自动回到最新消息。
 - 实时新消息会短暂高亮；断线后自动重连并补取近期消息。
+- 消息提示音默认关闭，可在设置中选择本机 Windows 自带声音并试听；仅当前频道别人新发的消息会响，历史消息、重复消息和自己的消息保持安静。
 - 单条消息发送失败不会断开当前频道。托盘会提示，草稿保留到下一次在同一账号和频道按输入快捷键时恢复；程序退出后不保留草稿。
 - 不会自动重发失败的消息。若网络超时导致发送结果不确定，重发前先查看频道，以免重复。
 - 平时 HUD 鼠标穿透；滚轮只在 HUD 输入处于前台时接管。点击其他窗口会退出输入。
@@ -74,7 +75,7 @@ uv run python tools/native_windows_probe.py --output artifacts/native
 
 生成的程序位于 `release/OopzTacticalOverlay.exe`。构建会验证打包后的 SDK 导入；`--smoke-test` 可进一步检查界面、托盘和设置读写。
 
-重构约定见 [重构记录](docs/rebuild.md)，本次交付与验证见 [0.10.2 验证记录](docs/validation-0.10.2.md)。
+重构约定见 [重构记录](docs/rebuild.md)，本次交付与验证见 [0.11.0 验证记录](docs/validation-0.11.0.md)。
 发行时需完成[线上发布和旧版自动升级验收](docs/releasing.md)。
 旧版发行记录见 [0.9.1 验证记录](docs/validation-0.9.1.md)和[线上自动升级验证](docs/validation-update-0.9.1.md)。
 

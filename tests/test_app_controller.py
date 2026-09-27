@@ -69,6 +69,52 @@ def test_app_controller_constructs_with_owned_state_root(tmp_path, monkeypatch) 
     app.processEvents()
 
 
+def test_sound_only_for_new_other_live_messages_in_current_generation(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
+    app = QApplication.instance() or QApplication([])
+    controller = AppController(app)
+    calls = []
+    monkeypatch.setattr("oopz_overlay.main.play_sound", calls.append)
+
+    def deliver(kind, message, generation=None):
+        controller._on_gateway_event(
+            GatewayEvent(
+                controller.gateway.generation if generation is None else generation,
+                kind,
+                ([message],),
+            )
+        )
+
+    other = ChatMessage("off", 1, "other", "队友", "关闭时", False)
+    deliver("live_timeline", other)
+    assert calls == []
+    controller.settings = replace(controller.settings, notification_sound="notify.wav")
+    old = replace(other, message_id="history", text="历史")
+    deliver("timeline", old)
+    deliver("live_timeline", old)
+    deliver("live_timeline", replace(other, message_id="mine", mine=True))
+    deliver("live_timeline", replace(other, message_id="pending", pending=True))
+    deliver("live_timeline", replace(other, message_id="failed", failed=True))
+    deliver(
+        "live_timeline",
+        replace(other, message_id="stale"),
+        controller.gateway.generation - 1,
+    )
+    assert calls == []
+    fresh = replace(other, message_id="fresh", timestamp_us=2)
+    deliver("live_timeline", fresh)
+    deliver("live_timeline", fresh)
+    deliver("live_timeline", replace(fresh, text="编辑已有消息"))
+    assert calls == ["notify.wav"]
+    controller.settings = replace(controller.settings, notification_sound="")
+    deliver("live_timeline", replace(other, message_id="off-again"))
+    assert calls == ["notify.wav"]
+    controller.shutdown()
+    app.processEvents()
+
+
 def test_manual_channel_change_clears_timeline_and_reconnects(
     tmp_path, monkeypatch
 ) -> None:

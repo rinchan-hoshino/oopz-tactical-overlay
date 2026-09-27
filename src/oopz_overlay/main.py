@@ -35,6 +35,7 @@ from .updater import (
 )
 from .widgets import OverlayWindow
 from .ui_common import APP_NAME, FONT_FAMILY, app_icon
+from .sounds import play_sound
 from .settings_dialog import SetupDialog
 from .win32_input import GlobalHotkeyRegistration, GlobalWheelRegistration
 
@@ -116,7 +117,7 @@ class AppController(QObject):
         )
 
         self.bridge.timeline.connect(self.overlay.merge_messages)
-        self.bridge.live_timeline.connect(self.overlay.merge_live_messages)
+        self.bridge.live_timeline.connect(self._on_live_messages)
         self.bridge.status.connect(self.overlay.set_connection_status)
         self.bridge.error.connect(self._on_error)
         self.bridge.send_error.connect(self._on_send_error)
@@ -440,7 +441,7 @@ class AppController(QObject):
         elif event.kind == "timeline":
             self.overlay.merge_messages(event.values[0])
         elif event.kind == "live_timeline":
-            self.overlay.merge_live_messages(event.values[0])
+            self._on_live_messages(event.values[0])
         elif event.kind == "error":
             self._connected_key = ()
             self._on_error(event.values[0])
@@ -448,6 +449,23 @@ class AppController(QObject):
             if self.setup_dialog is not None:
                 self.setup_dialog.show_error(event.values[0])
             self._show_warning(event.values[0])
+
+    def _on_live_messages(self, messages: list[ChatMessage]) -> None:
+        known_ids = {message.message_id for message in self.overlay.timeline.items}
+        self.overlay.merge_live_messages(messages)
+        if (
+            not self._shutting_down
+            and self.settings.notification_sound
+            and any(
+                message.message_id
+                and message.message_id not in known_ids
+                and not message.mine
+                and not message.pending
+                and not message.failed
+                for message in messages
+            )
+        ):
+            play_sound(self.settings.notification_sound)
 
     def _begin_edit(self) -> None:
         self.overlay.begin_edit_mode()

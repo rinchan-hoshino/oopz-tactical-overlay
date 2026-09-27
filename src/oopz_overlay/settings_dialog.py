@@ -22,6 +22,7 @@ from PySide6.QtWidgets import (
 from . import __version__
 from .gateway import Destination, LoginResult
 from .settings import AppSettings
+from .sounds import play_sound, system_sounds
 from .win32_input import parse_hotkey
 from .preview import HudPreview
 from .ui_common import APP_NAME, app_icon, _ui_font, _hotkey_from_event
@@ -264,6 +265,26 @@ class SetupDialog(QDialog):
         self.always_visible = QCheckBox("连接后显示消息")
         self.always_visible.setChecked(current.always_visible)
         controls.addWidget(self.always_visible)
+        group = QVBoxLayout()
+        group.setSpacing(10)
+        group.addWidget(QLabel("消息提示音"))
+        row = QHBoxLayout()
+        self.notification_sound = QComboBox()
+        self.notification_sound.setAccessibleName("消息提示音")
+        self.notification_sound.setSizeAdjustPolicy(
+            QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon
+        )
+        self.notification_sound.setMinimumContentsLength(8)
+        self.notification_sound.addItem("关闭", "")
+        for label, key in system_sounds():
+            self.notification_sound.addItem(label, key)
+        self.sound_preview = QPushButton("试听")
+        self.sound_preview.setAccessibleName("试听消息提示音")
+        self._select_sound(current.notification_sound)
+        row.addWidget(self.notification_sound, 1)
+        row.addWidget(self.sound_preview)
+        group.addLayout(row)
+        controls.addLayout(group)
         controls.addStretch(1)
         self._arrange_body(760)
         scroll.setWidget(self.body)
@@ -313,6 +334,8 @@ class SetupDialog(QDialog):
         self.text_opacity.valueChanged.connect(self._text_opacity_changed)
         self.backdrop_opacity.valueChanged.connect(self._backdrop_opacity_changed)
         self.always_visible.toggled.connect(self._emit_current)
+        self.notification_sound.currentIndexChanged.connect(self._sound_changed)
+        self.sound_preview.clicked.connect(self._preview_sound)
         self._populate_current_destination(current)
         self._updating = False
         self._update_preview()
@@ -486,8 +509,33 @@ class SetupDialog(QDialog):
         self.text_opacity.setValue(settings.text_opacity)
         self.backdrop_opacity.setValue(settings.backdrop_opacity)
         self.always_visible.setChecked(settings.always_visible)
+        self._select_sound(settings.notification_sound)
         self._updating = False
         self._update_preview()
+
+    def _select_sound(self, key: str) -> None:
+        index = self.notification_sound.findData(key)
+        if index < 0:
+            self.notification_sound.addItem("所选声音不可用", key)
+            index = self.notification_sound.count() - 1
+            self.notification_sound.model().item(index).setEnabled(False)
+        self.notification_sound.setCurrentIndex(index)
+        self._update_sound_preview()
+
+    def _update_sound_preview(self) -> None:
+        index = self.notification_sound.currentIndex()
+        self.sound_preview.setEnabled(
+            bool(self.notification_sound.currentData())
+            and self.notification_sound.model().item(index).isEnabled()
+        )
+
+    def _sound_changed(self) -> None:
+        self._update_sound_preview()
+        self._emit_current()
+
+    def _preview_sound(self) -> None:
+        if not play_sound(self.notification_sound.currentData(), preview=True):
+            self.show_error("这个声音暂时无法播放，请选择其他提示音。")
 
     def _request_edit(self) -> None:
         self.hide()
@@ -520,6 +568,7 @@ class SetupDialog(QDialog):
             "font_size": self.font_size.value(),
             "text_opacity": self.text_opacity.value(),
             "backdrop_opacity": self.backdrop_opacity.value(),
+            "notification_sound": self.notification_sound.currentData(),
             "area_id": "",
             "area_name": "",
             "channel_id": "",

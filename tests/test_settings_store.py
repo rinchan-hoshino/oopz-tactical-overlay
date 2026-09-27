@@ -30,6 +30,7 @@ def test_settings_store_contains_no_oopz_credentials(tmp_path) -> None:
         visibility_hotkey="Ctrl+F9",
         text_opacity=72,
         backdrop_opacity=38,
+        notification_sound="Windows Notify.wav",
     )
 
     store.save(settings)
@@ -46,6 +47,7 @@ def test_settings_store_contains_no_oopz_credentials(tmp_path) -> None:
     loaded = store.load()
     assert loaded.area_id == "area"
     assert loaded.channel_id == "channel"
+    assert loaded.notification_sound == "Windows Notify.wav"
     assert not loaded.has_credentials
 
 
@@ -93,6 +95,7 @@ def test_existing_hotkey_is_preserved_while_new_default_is_f8(tmp_path) -> None:
     assert loaded.font_size == 12
     assert loaded.text_opacity == 100
     assert loaded.backdrop_opacity == 32
+    assert loaded.notification_sound == ""
     assert AppSettings().hotkey == "F8"
 
 

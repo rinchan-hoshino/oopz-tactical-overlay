@@ -303,6 +303,27 @@ def start_pending_update(state_root: Path, current_version: str) -> bool:
 
 
 def cleanup_updater_later(path: Path) -> None:
+    # The new process also runs this after upgrades made by older helpers.
+    # Notify Explorer about the replaced file without clearing its global cache.
+    if os.name == "nt":
+        import ctypes
+        from ctypes import wintypes
+
+        notify = ctypes.windll.shell32.SHChangeNotify
+        notify.argtypes = [
+            wintypes.LONG,
+            wintypes.UINT,
+            ctypes.c_void_p,
+            ctypes.c_void_p,
+        ]
+        notify.restype = None
+        notify(
+            0x00002000,
+            0x0005 | 0x3000,
+            ctypes.c_wchar_p(str(_running_executable())),
+            None,
+        )
+
     def remove() -> None:
         for _attempt in range(20):
             try:

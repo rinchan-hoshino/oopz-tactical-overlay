@@ -30,6 +30,7 @@ class AppSettings:
     font_size: int = 12
     text_opacity: int = 100
     backdrop_opacity: int = 32
+    notification_sound: str = ""
 
     @classmethod
     def from_dict(cls, raw: dict[str, object]) -> AppSettings:
@@ -45,6 +46,7 @@ class AppSettings:
             "screen_name",
             "hotkey",
             "visibility_hotkey",
+            "notification_sound",
         ):
             if key in data and not isinstance(data[key], str):
                 raise ValueError(f"invalid setting: {key}")

@@ -14,6 +14,44 @@ from oopz_overlay.settings import AppSettings
 from oopz_overlay.widgets import HotkeyRecorder, SetupDialog
 
 
+def test_sound_selection_preview_off_and_missing_sound(monkeypatch):
+    app = QApplication.instance() or QApplication([])
+    monkeypatch.setattr(
+        "oopz_overlay.settings_dialog.system_sounds",
+        lambda: [
+            ("Windows Notify", "Windows Notify.wav"),
+            ("chimes", "chimes.wav"),
+        ],
+    )
+    played = []
+    monkeypatch.setattr(
+        "oopz_overlay.settings_dialog.play_sound",
+        lambda key, **kw: played.append((key, kw)) or True,
+    )
+    dialog = SetupDialog(AppSettings())
+    changed = []
+    dialog.settings_changed.connect(changed.append)
+    assert dialog.notification_sound.currentData() == ""
+    assert not dialog.sound_preview.isEnabled()
+    dialog.notification_sound.setCurrentIndex(1)
+    assert changed[-1].notification_sound == "Windows Notify.wav"
+    assert played == []
+    dialog.sound_preview.click()
+    assert played == [("Windows Notify.wav", {"preview": True})]
+    dialog.notification_sound.setCurrentIndex(0)
+    assert changed[-1].notification_sound == ""
+    assert not dialog.sound_preview.isEnabled()
+    count = len(changed)
+    dialog.sync_settings(AppSettings(notification_sound="removed.wav"))
+    assert len(changed) == count
+    assert dialog.notification_sound.currentData() == "removed.wav"
+    assert not dialog.sound_preview.isEnabled()
+    dialog.font_size.setValue(13)
+    assert changed[-1].notification_sound == "removed.wav"
+    dialog.close()
+    app.processEvents()
+
+
 def test_settings_keep_direct_controls_and_restore_manual_channel_selection() -> None:
     app = QApplication.instance() or QApplication([])
     dialog = SetupDialog(AppSettings())
