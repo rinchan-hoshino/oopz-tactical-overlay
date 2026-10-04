@@ -1,0 +1,1437 @@
+[
+  {
+    "id": "copy_198",
+    "source": [
+      "[已隐藏登录凭据]"
+    ],
+    "zh": [
+      "[已隐藏登录凭据]"
+    ],
+    "en": [
+      "[Token Redacted]"
+    ],
+    "trusted": []
+  },
+  {
+    "id": "copy_200",
+    "source": [
+      "Oopz 登录态已失效，请先打开 Oopz 刷新后重新读取。"
+    ],
+    "zh": [
+      "Oopz 登录态已失效，请先打开 Oopz 刷新后重新读取。"
+    ],
+    "en": [
+      "Oopz login session expired. Please open Oopz to refresh and try again."
+    ],
+    "trusted": []
+  },
+  {
+    "id": "copy_201",
+    "source": [
+      "连接已结束，正在重新连接。"
+    ],
+    "zh": [
+      "连接已结束，正在重新连接。"
+    ],
+    "en": [
+      "Connection ended. Reconnecting…"
+    ],
+    "trusted": []
+  },
+  {
+    "id": "copy_202",
+    "source": [
+      "历史消息暂时无法读取，实时消息仍会继续接收。"
+    ],
+    "zh": [
+      "历史消息暂时无法读取，实时消息仍会继续接收。"
+    ],
+    "en": [
+      "Failed to load message history. Real-time messages will still be received."
+    ],
+    "trusted": []
+  },
+  {
+    "id": "copy_203",
+    "source": [
+      "连接中断，正在重连…"
+    ],
+    "zh": [
+      "连接中断，正在重连…"
+    ],
+    "en": [
+      "Connection interrupted. Reconnecting…"
+    ],
+    "trusted": []
+  },
+  {
+    "id": "copy_204",
+    "source": [
+      "尚未连接 Oopz"
+    ],
+    "zh": [
+      "尚未连接 Oopz"
+    ],
+    "en": [
+      "Not connected to Oopz"
+    ],
+    "trusted": []
+  },
+  {
+    "id": "copy_205",
+    "source": [
+      "[图片]"
+    ],
+    "zh": [
+      "[图片]"
+    ],
+    "en": [
+      "[Image]"
+    ],
+    "trusted": []
+  },
+  {
+    "id": "copy_206",
+    "source": [
+      "[视频]"
+    ],
+    "zh": [
+      "[视频]"
+    ],
+    "en": [
+      "[Video]"
+    ],
+    "trusted": []
+  },
+  {
+    "id": "copy_207",
+    "source": [
+      "[语音]"
+    ],
+    "zh": [
+      "[语音]"
+    ],
+    "en": [
+      "[Voice]"
+    ],
+    "trusted": []
+  },
+  {
+    "id": "copy_208",
+    "source": [
+      "[文件]"
+    ],
+    "zh": [
+      "[文件]"
+    ],
+    "en": [
+      "[File]"
+    ],
+    "trusted": []
+  },
+  {
+    "id": "copy_209",
+    "source": [
+      "[表情]"
+    ],
+    "zh": [
+      "[表情]"
+    ],
+    "en": [
+      "[Sticker]"
+    ],
+    "trusted": []
+  },
+  {
+    "id": "copy_210",
+    "source": [
+      "[图片]"
+    ],
+    "zh": [
+      "[图片]"
+    ],
+    "en": [
+      "[Image]"
+    ],
+    "trusted": []
+  },
+  {
+    "id": "copy_211",
+    "source": [
+      "[图片]"
+    ],
+    "zh": [
+      "[图片]"
+    ],
+    "en": [
+      "[Image]"
+    ],
+    "trusted": []
+  },
+  {
+    "id": "copy_212",
+    "source": [
+      "[非文字消息]"
+    ],
+    "zh": [
+      "[非文字消息]"
+    ],
+    "en": [
+      "[Non-text message]"
+    ],
+    "trusted": []
+  },
+  {
+    "id": "copy_213",
+    "source": [
+      "我"
+    ],
+    "zh": [
+      "我"
+    ],
+    "en": [
+      "Me"
+    ],
+    "trusted": []
+  },
+  {
+    "id": "copy_214",
+    "source": [
+      "未知"
+    ],
+    "zh": [
+      "未知"
+    ],
+    "en": [
+      "Unknown"
+    ],
+    "trusted": []
+  },
+  {
+    "id": "copy_215",
+    "source": [
+      "无法创建程序入口，请关闭旧进程后重试。"
+    ],
+    "zh": [
+      "无法创建程序入口，请关闭旧进程后重试。"
+    ],
+    "en": [
+      "Could not acquire single-instance lock. Close the existing process and try again."
+    ],
+    "trusted": []
+  },
+  {
+    "id": "copy_216",
+    "source": [
+      "无法检查 Oopz 是否运行，请稍后重试。"
+    ],
+    "zh": [
+      "无法检查 Oopz 是否运行，请稍后重试。"
+    ],
+    "en": [
+      "Failed to check if Oopz is running. Please try again later."
+    ],
+    "trusted": []
+  },
+  {
+    "id": "copy_217",
+    "source": [
+      "本机 Oopz 登录态无法识别，请先更新并重新登录 Oopz。"
+    ],
+    "zh": [
+      "本机 Oopz 登录态无法识别，请先更新并重新登录 Oopz。"
+    ],
+    "en": [
+      "Unrecognized Oopz login session format. Please update and re-login to Oopz."
+    ],
+    "trusted": []
+  },
+  {
+    "id": "copy_218",
+    "source": [
+      "本机 Oopz 登录态格式不完整。"
+    ],
+    "zh": [
+      "本机 Oopz 登录态格式不完整。"
+    ],
+    "en": [
+      "Incomplete Oopz session data format."
+    ],
+    "trusted": []
+  },
+  {
+    "id": "copy_219",
+    "source": [
+      "没有找到完整的 Oopz 登录态，请先打开并登录 Oopz。"
+    ],
+    "zh": [
+      "没有找到完整的 Oopz 登录态，请先打开并登录 Oopz。"
+    ],
+    "en": [
+      "No valid Oopz login session found. Please launch and log in to Oopz."
+    ],
+    "trusted": []
+  },
+  {
+    "id": "copy_220",
+    "source": [
+      "Oopz 登录态已经过期，请先打开 Oopz 完成登录或刷新。"
+    ],
+    "zh": [
+      "Oopz 登录态已经过期，请先打开 Oopz 完成登录或刷新。"
+    ],
+    "en": [
+      "Oopz session expired. Please launch Oopz to refresh your login."
+    ],
+    "trusted": []
+  },
+  {
+    "id": "copy_221",
+    "source": [
+      "只能在安装了 Oopz 的 Windows 用户中读取登录态。"
+    ],
+    "zh": [
+      "只能在安装了 Oopz 的 Windows 用户中读取登录态。"
+    ],
+    "en": [
+      "Oopz session can only be read on a Windows account with Oopz installed."
+    ],
+    "trusted": []
+  },
+  {
+    "id": "copy_222",
+    "source": [
+      "Oopz 尚未运行，请先打开并登录 Oopz。"
+    ],
+    "zh": [
+      "Oopz 尚未运行，请先打开并登录 Oopz。"
+    ],
+    "en": [
+      "Oopz is not running. Please launch and log in to Oopz."
+    ],
+    "trusted": []
+  },
+  {
+    "id": "copy_223",
+    "source": [
+      "没有找到已登录的 Oopz，请先打开并登录 Oopz。"
+    ],
+    "zh": [
+      "没有找到已登录的 Oopz，请先打开并登录 Oopz。"
+    ],
+    "en": [
+      "No active Oopz session found. Please launch and log in to Oopz."
+    ],
+    "trusted": []
+  },
+  {
+    "id": "copy_224",
+    "source": [
+      "等待检查更新"
+    ],
+    "zh": [
+      "等待检查更新"
+    ],
+    "en": [
+      "Waiting to check for updates"
+    ],
+    "trusted": []
+  },
+  {
+    "id": "copy_225",
+    "source": [
+      "上次更新失败，本次启动后会重试"
+    ],
+    "zh": [
+      "上次更新失败，本次启动后会重试"
+    ],
+    "en": [
+      "Last update failed; will retry during this startup"
+    ],
+    "trusted": []
+  },
+  {
+    "id": "copy_226",
+    "source": [
+      "退出"
+    ],
+    "zh": [
+      "退出"
+    ],
+    "en": [
+      "Quit"
+    ],
+    "trusted": []
+  },
+  {
+    "id": "copy_227",
+    "source": [
+      "尚未连接 Oopz，请从托盘打开设置查看连接状态。"
+    ],
+    "zh": [
+      "尚未连接 Oopz，请从托盘打开设置查看连接状态。"
+    ],
+    "en": [
+      "Not connected to Oopz. Open settings from the system tray to check connection status."
+    ],
+    "trusted": []
+  },
+  {
+    "id": "copy_228",
+    "source": [
+      "正在连接 #",
+      "…"
+    ],
+    "zh": [
+      "正在连接 #",
+      "…"
+    ],
+    "en": [
+      "Connecting to #",
+      "…"
+    ],
+    "trusted": [
+      false
+    ]
+  },
+  {
+    "id": "copy_229",
+    "source": [
+      "未连接"
+    ],
+    "zh": [
+      "未连接"
+    ],
+    "en": [
+      "Disconnected"
+    ],
+    "trusted": []
+  },
+  {
+    "id": "copy_230",
+    "source": [
+      "请选择 Oopz 文字频道"
+    ],
+    "zh": [
+      "请选择 Oopz 文字频道"
+    ],
+    "en": [
+      "Select an Oopz text channel"
+    ],
+    "trusted": []
+  },
+  {
+    "id": "copy_231",
+    "source": [
+      "设置暂时无法保存，请检查磁盘空间和文件权限。"
+    ],
+    "zh": [
+      "设置暂时无法保存，请检查磁盘空间和文件权限。"
+    ],
+    "en": [
+      "Unable to save settings. Check disk space and file permissions."
+    ],
+    "trusted": []
+  },
+  {
+    "id": "copy_232",
+    "source": [
+      "消息发送失败：",
+      ""
+    ],
+    "zh": [
+      "消息发送失败：",
+      ""
+    ],
+    "en": [
+      "Failed to send message: ",
+      ""
+    ],
+    "trusted": [
+      true
+    ]
+  },
+  {
+    "id": "copy_233",
+    "source": [
+      "正在检查更新"
+    ],
+    "zh": [
+      "正在检查更新"
+    ],
+    "en": [
+      "Checking for updates…"
+    ],
+    "trusted": []
+  },
+  {
+    "id": "copy_234",
+    "source": [
+      "已是最新版 v",
+      ""
+    ],
+    "zh": [
+      "已是最新版 v",
+      ""
+    ],
+    "en": [
+      "Already up to date: v",
+      ""
+    ],
+    "trusted": [
+      false
+    ]
+  },
+  {
+    "id": "copy_235",
+    "source": [
+      "正在下载 v",
+      " · ",
+      "%"
+    ],
+    "zh": [
+      "正在下载 v",
+      " · ",
+      "%"
+    ],
+    "en": [
+      "Downloading v",
+      " · ",
+      "%"
+    ],
+    "trusted": [
+      false,
+      false
+    ]
+  },
+  {
+    "id": "copy_236",
+    "source": [
+      "v",
+      " 已下载，重启后更新"
+    ],
+    "zh": [
+      "v",
+      " 已下载，重启后更新"
+    ],
+    "en": [
+      "v",
+      " downloaded; will update on restart"
+    ],
+    "trusted": [
+      false
+    ]
+  },
+  {
+    "id": "copy_237",
+    "source": [
+      "检查更新失败，下次启动重试"
+    ],
+    "zh": [
+      "检查更新失败，下次启动重试"
+    ],
+    "en": [
+      "Update check failed; will retry on next launch"
+    ],
+    "trusted": []
+  },
+  {
+    "id": "copy_238",
+    "source": [
+      "",
+      " 已下载，将在下次启动时自动更新。"
+    ],
+    "zh": [
+      "",
+      " 已下载，将在下次启动时自动更新。"
+    ],
+    "en": [
+      "",
+      " downloaded. It will be installed automatically on next startup."
+    ],
+    "trusted": [
+      false
+    ]
+  },
+  {
+    "id": "copy_250",
+    "source": [
+      "纸条目前仅支持 Windows。"
+    ],
+    "zh": [
+      "纸条目前仅支持 Windows。"
+    ],
+    "en": [
+      "TypeSlip currently only supports Windows."
+    ],
+    "trusted": []
+  },
+  {
+    "id": "copy_251",
+    "source": [
+      "未发送"
+    ],
+    "zh": [
+      "未发送"
+    ],
+    "en": [
+      "Not sent"
+    ],
+    "trusted": []
+  },
+  {
+    "id": "copy_252",
+    "source": [
+      "频道"
+    ],
+    "zh": [
+      "频道"
+    ],
+    "en": [
+      "channel"
+    ],
+    "trusted": []
+  },
+  {
+    "id": "copy_253",
+    "source": [
+      " 的消息"
+    ],
+    "zh": [
+      " 的消息"
+    ],
+    "en": [
+      " message"
+    ],
+    "trusted": []
+  },
+  {
+    "id": "copy_254",
+    "source": [
+      "发往 "
+    ],
+    "zh": [
+      "发往 "
+    ],
+    "en": [
+      "Message to "
+    ],
+    "trusted": []
+  },
+  {
+    "id": "copy_255",
+    "source": [
+      "回到最新 ↓"
+    ],
+    "zh": [
+      "回到最新 ↓"
+    ],
+    "en": [
+      "Jump to latest ↓"
+    ],
+    "trusted": []
+  },
+  {
+    "id": "copy_256",
+    "source": [
+      "你"
+    ],
+    "zh": [
+      "你"
+    ],
+    "en": [
+      "You"
+    ],
+    "trusted": []
+  },
+  {
+    "id": "copy_257",
+    "source": [
+      "你"
+    ],
+    "zh": [
+      "你"
+    ],
+    "en": [
+      "You"
+    ],
+    "trusted": []
+  },
+  {
+    "id": "copy_258",
+    "source": [
+      "游戏消息预览"
+    ],
+    "zh": [
+      "游戏消息预览"
+    ],
+    "en": [
+      "Game message preview"
+    ],
+    "trusted": []
+  },
+  {
+    "id": "copy_270",
+    "source": [
+      "请按下按键…"
+    ],
+    "zh": [
+      "请按下按键…"
+    ],
+    "en": [
+      "Press a key…"
+    ],
+    "trusted": []
+  },
+  {
+    "id": "copy_271",
+    "source": [
+      "未连接 Oopz"
+    ],
+    "zh": [
+      "未连接 Oopz"
+    ],
+    "en": [
+      "Not connected to Oopz"
+    ],
+    "trusted": []
+  },
+  {
+    "id": "copy_272",
+    "source": [
+      "消息频道"
+    ],
+    "zh": [
+      "消息频道"
+    ],
+    "en": [
+      "Message channel"
+    ],
+    "trusted": []
+  },
+  {
+    "id": "copy_273",
+    "source": [
+      "刷新"
+    ],
+    "zh": [
+      "刷新"
+    ],
+    "en": [
+      "Refresh"
+    ],
+    "trusted": []
+  },
+  {
+    "id": "copy_274",
+    "source": [
+      "刷新频道"
+    ],
+    "zh": [
+      "刷新频道"
+    ],
+    "en": [
+      "Refresh channels"
+    ],
+    "trusted": []
+  },
+  {
+    "id": "copy_275",
+    "source": [
+      "预览"
+    ],
+    "zh": [
+      "预览"
+    ],
+    "en": [
+      "Preview"
+    ],
+    "trusted": []
+  },
+  {
+    "id": "copy_276",
+    "source": [
+      "亮景"
+    ],
+    "zh": [
+      "亮景"
+    ],
+    "en": [
+      "Light background"
+    ],
+    "trusted": []
+  },
+  {
+    "id": "copy_277",
+    "source": [
+      "暗景"
+    ],
+    "zh": [
+      "暗景"
+    ],
+    "en": [
+      "Dark background"
+    ],
+    "trusted": []
+  },
+  {
+    "id": "copy_278",
+    "source": [
+      "平时"
+    ],
+    "zh": [
+      "平时"
+    ],
+    "en": [
+      "Passive"
+    ],
+    "trusted": []
+  },
+  {
+    "id": "copy_279",
+    "source": [
+      "输入"
+    ],
+    "zh": [
+      "输入"
+    ],
+    "en": [
+      "Input"
+    ],
+    "trusted": []
+  },
+  {
+    "id": "copy_280",
+    "source": [
+      "回看"
+    ],
+    "zh": [
+      "回看"
+    ],
+    "en": [
+      "History"
+    ],
+    "trusted": []
+  },
+  {
+    "id": "copy_281",
+    "source": [
+      "发送失败"
+    ],
+    "zh": [
+      "发送失败"
+    ],
+    "en": [
+      "Send failed"
+    ],
+    "trusted": []
+  },
+  {
+    "id": "copy_282",
+    "source": [
+      "调整位置与大小"
+    ],
+    "zh": [
+      "调整位置与大小"
+    ],
+    "en": [
+      "Adjust position and size"
+    ],
+    "trusted": []
+  },
+  {
+    "id": "copy_283",
+    "source": [
+      "显示"
+    ],
+    "zh": [
+      "显示"
+    ],
+    "en": [
+      "Display"
+    ],
+    "trusted": []
+  },
+  {
+    "id": "copy_284",
+    "source": [
+      "文字大小"
+    ],
+    "zh": [
+      "文字大小"
+    ],
+    "en": [
+      "Text size"
+    ],
+    "trusted": []
+  },
+  {
+    "id": "copy_285",
+    "source": [
+      "文字大小"
+    ],
+    "zh": [
+      "文字大小"
+    ],
+    "en": [
+      "Text size"
+    ],
+    "trusted": []
+  },
+  {
+    "id": "copy_286",
+    "source": [
+      "文字不透明度"
+    ],
+    "zh": [
+      "文字不透明度"
+    ],
+    "en": [
+      "Text opacity"
+    ],
+    "trusted": []
+  },
+  {
+    "id": "copy_287",
+    "source": [
+      "底色深度"
+    ],
+    "zh": [
+      "底色深度"
+    ],
+    "en": [
+      "Backdrop opacity"
+    ],
+    "trusted": []
+  },
+  {
+    "id": "copy_288",
+    "source": [
+      "连接后显示消息"
+    ],
+    "zh": [
+      "连接后显示消息"
+    ],
+    "en": [
+      "Show messages when connected"
+    ],
+    "trusted": []
+  },
+  {
+    "id": "copy_289",
+    "source": [
+      "消息提示音"
+    ],
+    "zh": [
+      "消息提示音"
+    ],
+    "en": [
+      "Notification sound"
+    ],
+    "trusted": []
+  },
+  {
+    "id": "copy_290",
+    "source": [
+      "消息提示音"
+    ],
+    "zh": [
+      "消息提示音"
+    ],
+    "en": [
+      "Notification sound"
+    ],
+    "trusted": []
+  },
+  {
+    "id": "copy_291",
+    "source": [
+      "关闭"
+    ],
+    "zh": [
+      "关闭"
+    ],
+    "en": [
+      "Off"
+    ],
+    "trusted": []
+  },
+  {
+    "id": "copy_292",
+    "source": [
+      "试听"
+    ],
+    "zh": [
+      "试听"
+    ],
+    "en": [
+      "Test"
+    ],
+    "trusted": []
+  },
+  {
+    "id": "copy_293",
+    "source": [
+      "试听消息提示音"
+    ],
+    "zh": [
+      "试听消息提示音"
+    ],
+    "en": [
+      "Test notification sound"
+    ],
+    "trusted": []
+  },
+  {
+    "id": "copy_294",
+    "source": [
+      "快捷键"
+    ],
+    "zh": [
+      "快捷键"
+    ],
+    "en": [
+      "Shortcuts"
+    ],
+    "trusted": []
+  },
+  {
+    "id": "copy_295",
+    "source": [
+      "输入消息"
+    ],
+    "zh": [
+      "输入消息"
+    ],
+    "en": [
+      "Compose message"
+    ],
+    "trusted": []
+  },
+  {
+    "id": "copy_296",
+    "source": [
+      "显示 / 隐藏"
+    ],
+    "zh": [
+      "显示 / 隐藏"
+    ],
+    "en": [
+      "Show / Hide"
+    ],
+    "trusted": []
+  },
+  {
+    "id": "copy_297",
+    "source": [
+      "快捷键"
+    ],
+    "zh": [
+      "快捷键"
+    ],
+    "en": [
+      "shortcut"
+    ],
+    "trusted": []
+  },
+  {
+    "id": "copy_298",
+    "source": [
+      "等待检查更新"
+    ],
+    "zh": [
+      "等待检查更新"
+    ],
+    "en": [
+      "Waiting to check for updates"
+    ],
+    "trusted": []
+  },
+  {
+    "id": "copy_299",
+    "source": [
+      "频道"
+    ],
+    "zh": [
+      "频道"
+    ],
+    "en": [
+      "Channel"
+    ],
+    "trusted": []
+  },
+  {
+    "id": "copy_300",
+    "source": [
+      "已连接 Oopz"
+    ],
+    "zh": [
+      "已连接 Oopz"
+    ],
+    "en": [
+      "Connected to Oopz"
+    ],
+    "trusted": []
+  },
+  {
+    "id": "copy_301",
+    "source": [
+      "未连接 Oopz"
+    ],
+    "zh": [
+      "未连接 Oopz"
+    ],
+    "en": [
+      "Not connected to Oopz"
+    ],
+    "trusted": []
+  },
+  {
+    "id": "copy_302",
+    "source": [
+      "上次选择的服务器"
+    ],
+    "zh": [
+      "上次选择的服务器"
+    ],
+    "en": [
+      "Previously selected server"
+    ],
+    "trusted": []
+  },
+  {
+    "id": "copy_303",
+    "source": [
+      "当前服务器"
+    ],
+    "zh": [
+      "当前服务器"
+    ],
+    "en": [
+      "Current server"
+    ],
+    "trusted": []
+  },
+  {
+    "id": "copy_304",
+    "source": [
+      "当前频道"
+    ],
+    "zh": [
+      "当前频道"
+    ],
+    "en": [
+      "Current channel"
+    ],
+    "trusted": []
+  },
+  {
+    "id": "copy_305",
+    "source": [
+      "正在读取频道…"
+    ],
+    "zh": [
+      "正在读取频道…"
+    ],
+    "en": [
+      "Reading channels…"
+    ],
+    "trusted": []
+  },
+  {
+    "id": "copy_306",
+    "source": [
+      "读取中"
+    ],
+    "zh": [
+      "读取中"
+    ],
+    "en": [
+      "Loading…"
+    ],
+    "trusted": []
+  },
+  {
+    "id": "copy_307",
+    "source": [
+      "未检测到当前语音服务器"
+    ],
+    "zh": [
+      "未检测到当前语音服务器"
+    ],
+    "en": [
+      "No current voice server detected"
+    ],
+    "trusted": []
+  },
+  {
+    "id": "copy_308",
+    "source": [
+      "请选择文字频道"
+    ],
+    "zh": [
+      "请选择文字频道"
+    ],
+    "en": [
+      "Select a text channel"
+    ],
+    "trusted": []
+  },
+  {
+    "id": "copy_309",
+    "source": [
+      "请先加入 Oopz 语音服务器"
+    ],
+    "zh": [
+      "请先加入 Oopz 语音服务器"
+    ],
+    "en": [
+      "Join an Oopz voice server first"
+    ],
+    "trusted": []
+  },
+  {
+    "id": "copy_310",
+    "source": [
+      "刷新"
+    ],
+    "zh": [
+      "刷新"
+    ],
+    "en": [
+      "Refresh"
+    ],
+    "trusted": []
+  },
+  {
+    "id": "copy_311",
+    "source": [
+      "刷新"
+    ],
+    "zh": [
+      "刷新"
+    ],
+    "en": [
+      "Refresh"
+    ],
+    "trusted": []
+  },
+  {
+    "id": "copy_314",
+    "source": [
+      "所选声音不可用"
+    ],
+    "zh": [
+      "所选声音不可用"
+    ],
+    "en": [
+      "Selected sound unavailable"
+    ],
+    "trusted": []
+  },
+  {
+    "id": "copy_315",
+    "source": [
+      "这个声音暂时无法播放，请选择其他提示音。"
+    ],
+    "zh": [
+      "这个声音暂时无法播放，请选择其他提示音。"
+    ],
+    "en": [
+      "Unable to play this sound. Please select another notification sound."
+    ],
+    "trusted": []
+  },
+  {
+    "id": "copy_316",
+    "source": [
+      "纸条"
+    ],
+    "zh": [
+      "纸条"
+    ],
+    "en": [
+      "TypeSlip"
+    ],
+    "trusted": []
+  },
+  {
+    "id": "copy_317",
+    "source": [
+      "这个按键暂不支持"
+    ],
+    "zh": [
+      "这个按键暂不支持"
+    ],
+    "en": [
+      "This key is not supported"
+    ],
+    "trusted": []
+  },
+  {
+    "id": "copy_318",
+    "source": [
+      "拖动调整位置"
+    ],
+    "zh": [
+      "拖动调整位置"
+    ],
+    "en": [
+      "Drag to reposition"
+    ],
+    "trusted": []
+  },
+  {
+    "id": "copy_319",
+    "source": [
+      "取消"
+    ],
+    "zh": [
+      "取消"
+    ],
+    "en": [
+      "Cancel"
+    ],
+    "trusted": []
+  },
+  {
+    "id": "copy_320",
+    "source": [
+      "完成"
+    ],
+    "zh": [
+      "完成"
+    ],
+    "en": [
+      "Done"
+    ],
+    "trusted": []
+  },
+  {
+    "id": "copy_321",
+    "source": [
+      "",
+      " · 消息"
+    ],
+    "zh": [
+      "",
+      " · 消息"
+    ],
+    "en": [
+      "",
+      " · Messages"
+    ],
+    "trusted": [
+      true
+    ]
+  },
+  {
+    "id": "copy_322",
+    "source": [
+      "无法激活输入。请确认当前程序没有使用更高的管理员权限。"
+    ],
+    "zh": [
+      "无法激活输入。请确认当前程序没有使用更高的管理员权限。"
+    ],
+    "en": [
+      "Cannot activate input. Please verify that the target game does not have higher administrator privileges."
+    ],
+    "trusted": []
+  },
+  {
+    "id": "copy_323",
+    "source": [
+      "快捷键不能为空"
+    ],
+    "zh": [
+      "快捷键不能为空"
+    ],
+    "en": [
+      "Shortcut cannot be empty"
+    ],
+    "trusted": []
+  },
+  {
+    "id": "copy_324",
+    "source": [
+      "快捷键需要且只能包含一个主按键"
+    ],
+    "zh": [
+      "快捷键需要且只能包含一个主按键"
+    ],
+    "en": [
+      "Shortcut must contain exactly one primary key"
+    ],
+    "trusted": []
+  },
+  {
+    "id": "copy_325",
+    "source": [
+      "支持常用功能键、A-Z、0-9 与 F1-F12"
+    ],
+    "zh": [
+      "支持常用功能键、A-Z、0-9 与 F1-F12"
+    ],
+    "en": [
+      "Supports common function/special keys, A-Z, 0-9, and F1-F12"
+    ],
+    "trusted": []
+  },
+  {
+    "id": "copy_326",
+    "source": [
+      "滚轮监听暂时不可用：",
+      ""
+    ],
+    "zh": [
+      "滚轮监听暂时不可用：",
+      ""
+    ],
+    "en": [
+      "Mouse wheel hook unavailable: ",
+      ""
+    ],
+    "trusted": [
+      true
+    ]
+  },
+  {
+    "id": "copy_327",
+    "source": [
+      "无法监听滚轮"
+    ],
+    "zh": [
+      "无法监听滚轮"
+    ],
+    "en": [
+      "Failed to install mouse wheel hook"
+    ],
+    "trusted": []
+  },
+  {
+    "id": "copy_328",
+    "source": [
+      "输入和显示快捷键不能相同"
+    ],
+    "zh": [
+      "输入和显示快捷键不能相同"
+    ],
+    "en": [
+      "Activation and visibility shortcuts cannot be identical"
+    ],
+    "trusted": []
+  },
+  {
+    "id": "copy_329",
+    "source": [
+      "快捷键已被其他程序占用"
+    ],
+    "zh": [
+      "快捷键已被其他程序占用"
+    ],
+    "en": [
+      "Shortcut is already in use by another application"
+    ],
+    "trusted": []
+  }
+]

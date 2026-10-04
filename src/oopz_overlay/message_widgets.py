@@ -1,4 +1,5 @@
 from __future__ import annotations
+from .i18n import tr
 
 from datetime import UTC, datetime
 from math import ceil
@@ -220,12 +221,13 @@ class MessageComposer(QFrame):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setObjectName("messageComposer")
-        self.setStyleSheet("""
-            QFrame#messageComposer { background: transparent; border: none;
-                border-top: 1px solid rgba(208,222,193,73); }
+        self._style = """
+            QFrame#messageComposer { background: transparent; border: none; }
             QLineEdit { background: transparent; border: none; padding: 2px 0;
-                selection-background-color: #657247; selection-color: #fffef8; }
-        """)
+                border-bottom: 1px solid rgba(138,204,255,180);
+                selection-background-color: #0071e3; selection-color: #ffffff; }
+        """
+        self.setStyleSheet(self._style)
         root = QVBoxLayout(self)
         root.setContentsMargins(2, 5, 2, 0)
         root.setSpacing(2)
@@ -234,15 +236,15 @@ class MessageComposer(QFrame):
         self.channel = OutlinedLabel()
         self.channel.setFont(_ui_font(9))
         palette = self.channel.palette()
-        palette.setColor(QPalette.ColorRole.WindowText, QColor("#d0d9cc"))
+        palette.setColor(QPalette.ColorRole.WindowText, QColor("#8accff"))
         self.channel.setPalette(palette)
-        self.channel.setStyleSheet("background: transparent; color: #d0d9cc;")
+        self.channel.setStyleSheet("background: transparent; color: #8accff;")
         self.edit = OutlinedLineEdit()
         self.edit.setMaxLength(500)
         layout.addWidget(self.channel)
         layout.addWidget(self.edit, 1)
         root.addLayout(layout)
-        self.failure = QLabel("未发送")
+        self.failure = QLabel(tr("未发送"))
         self.failure.setFont(_ui_font(9))
         self.failure.setStyleSheet("color: #e7cb9c; background: transparent")
         self.failure.hide()
@@ -253,7 +255,9 @@ class MessageComposer(QFrame):
         self.failure.setVisible(failed)
 
     def configure(self, settings) -> None:
-        destination = "# " + (settings.channel_name or "频道")
+        self.setStyleSheet(self._style +
+            f'QFrame#messageComposer {{ background:rgba(10,17,16,{round(settings.backdrop_opacity * 2.55)}); border-radius:3px; }}')
+        destination = "# " + (settings.channel_name or tr("频道"))
         self.channel.setText(
             self.channel.fontMetrics().elidedText(
                 destination, Qt.TextElideMode.ElideRight, 95
@@ -261,7 +265,7 @@ class MessageComposer(QFrame):
         )
         self.channel.setToolTip(destination)
         self.channel.setAccessibleName(destination)
-        self.edit.setAccessibleName("发往 " + destination + " 的消息")
+        self.edit.setAccessibleName(tr("发往 ") + destination + tr(" 的消息"))
         self.edit.setFont(_ui_font(settings.font_size))
         self.edit.setFixedHeight(max(30, self.edit.fontMetrics().height() + 8))
         self.edit.set_text_opacity(settings.text_opacity)
@@ -279,7 +283,7 @@ class HistoryNavigation(QWidget):
         self.time.setStyleSheet("color: #d6ddd3; background: transparent")
         layout.addWidget(self.time)
         layout.addStretch(1)
-        self.latest = QPushButton("回到最新 ↓")
+        self.latest = QPushButton(tr("回到最新 ↓"))
         self.latest.setFont(_ui_font(9))
         self.latest.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.latest.setStyleSheet(
@@ -296,7 +300,7 @@ def sender_column_width(
     metrics = QFontMetricsF(_ui_font(font_size, QFont.Weight.Medium))
     natural_width = max(
         (
-            metrics.horizontalAdvance("你" if m.mine else m.sender_name)
+            metrics.horizontalAdvance(tr("你") if m.mine else m.sender_name)
             for m in messages
         ),
         default=0,
@@ -315,9 +319,11 @@ class MessageRow(QWidget):
         parent: QWidget | None = None,
         *,
         sender_width: int | None = None,
+        backdrop_opacity: int = 32,
     ) -> None:
         super().__init__(parent)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
+        self._backdrop_opacity = backdrop_opacity
         self._highlight_alpha = 0
         self._highlight_animation = QVariantAnimation(self)
         self._highlight_animation.setDuration(1400)
@@ -333,7 +339,7 @@ class MessageRow(QWidget):
         layout.setSpacing(6)
 
         moment = message_time(message.timestamp_us)
-        name = "你" if message.mine else message.sender_name
+        name = tr("你") if message.mine else message.sender_name
         font = _ui_font(font_size, QFont.Weight.Medium)
         metrics = QFontMetricsF(font)
         sender = self._sender = OutlinedLabel(name)
@@ -352,16 +358,14 @@ class MessageRow(QWidget):
         sender_palette = sender.palette()
         sender_palette.setColor(
             QPalette.ColorRole.WindowText,
-            _with_opacity("#c6d9dd" if message.mine else "#d6e0bc", text_opacity),
+            _with_opacity("#8accff", text_opacity),
         )
         sender.setPalette(sender_palette)
-        name_color = _with_opacity(
-            "#c6d9dd" if message.mine else "#d6e0bc", text_opacity
-        )
+        name_color = _with_opacity("#8accff", text_opacity)
         sender.setStyleSheet(
             f"background:transparent; color:rgba{str(name_color.getRgb())};"
         )
-        text = OutlinedLabel(message.text)
+        text = self._text = OutlinedLabel(message.text)
         text.setWordWrap(True)
         text.setFont(_ui_font(font_size))
         text_palette = text.palette()
@@ -389,11 +393,18 @@ class MessageRow(QWidget):
         self.update()
 
     def paintEvent(self, event) -> None:
-        if self._highlight_alpha:
+        if self._backdrop_opacity or self._highlight_alpha:
             painter = QPainter(self)
             painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
             painter.setPen(Qt.PenStyle.NoPen)
-            painter.setBrush(QColor(180, 198, 139, self._highlight_alpha))
-            painter.drawRoundedRect(self.rect().adjusted(1, 0, -1, 0), 5, 5)
+            text_width = self._text.fontMetrics().horizontalAdvance(self._text.text())
+            fitted_right = min(self.width() - 1, self._text.x() + text_width + 3)
+            backing = QRectF(0, 0, fitted_right, self.height())
+            if self._backdrop_opacity:
+                painter.setBrush(QColor(10, 17, 16, round(self._backdrop_opacity * 2.55)))
+                painter.drawRoundedRect(backing, 3, 3)
+            if self._highlight_alpha:
+                painter.setBrush(QColor(138, 204, 255, self._highlight_alpha))
+                painter.drawRoundedRect(backing, 3, 3)
             painter.end()
         super().paintEvent(event)

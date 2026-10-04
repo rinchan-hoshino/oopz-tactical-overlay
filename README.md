@@ -1,8 +1,8 @@
-# 纸条
+# 纸条 TypeSlip
 
 Windows 游戏消息浮层。通过社区维护的 `oopz-sdk` 收发用户手动选择的 Oopz 文字频道消息。
 
-下载：[纸条 0.11.0](https://acv.k-neco.com/tools/oopz-tactical-overlay/Zhitiao.exe)。已有用户可从原启动入口自动升级，设置保持不变。
+下载：[纸条 TypeSlip 0.12.0](https://acv.k-neco.com/tools/oopz-tactical-overlay/TypeSlip.exe)。已有用户可从原启动入口自动升级，设置保持不变。
 
 ## 使用
 

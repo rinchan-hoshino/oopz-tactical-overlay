@@ -1,4 +1,5 @@
 from __future__ import annotations
+from .i18n import tr
 
 import ctypes
 import os
@@ -80,7 +81,7 @@ class DragSurface(QLabel):
     moved = Signal(QPoint)
 
     def __init__(self) -> None:
-        super().__init__("拖动调整位置")
+        super().__init__(tr("拖动调整位置"))
         self._offset = QPoint()
         self.setCursor(Qt.CursorShape.SizeAllCursor)
         self.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -122,10 +123,10 @@ class EditorBar(QFrame):
         self.drag_surface = DragSurface()
         self.drag_surface.moved.connect(self.moved.emit)
         layout.addWidget(self.drag_surface, 1)
-        self.cancel_button = QPushButton("取消")
+        self.cancel_button = QPushButton(tr("取消"))
         self.cancel_button.clicked.connect(self.cancelled.emit)
         layout.addWidget(self.cancel_button)
-        self.done_button = QPushButton("完成")
+        self.done_button = QPushButton(tr("完成"))
         self.done_button.setObjectName("done")
         self.done_button.clicked.connect(self.accepted.emit)
         layout.addWidget(self.done_button)
@@ -154,7 +155,7 @@ class OverlayWindow(QWidget):
             os.name == "nt"
             and QGuiApplication.platformName() not in {"offscreen", "minimal"}
         )
-        self.setWindowTitle(f"{APP_NAME} · 消息")
+        self.setWindowTitle(tr(f"{APP_NAME} · 消息"))
         self.timeline = ChatTimeline(limit=80)
         self.intent = OverlayIntent()
         self._connected = False
@@ -268,7 +269,7 @@ class OverlayWindow(QWidget):
     def set_connection_status(self, text: str, connected: bool) -> None:
         self._connected = connected
         self.input.setReadOnly(not (connected and self._active))
-        self.status.setText(text)
+        self.status.setText(tr(text))
         self.status.setVisible(bool(text) and not connected and self._active)
         if (
             connected
@@ -334,6 +335,7 @@ class OverlayWindow(QWidget):
                 message,
                 self._settings.font_size,
                 self._settings.text_opacity,
+                self._settings.backdrop_opacity,
                 row_width,
                 sender_width,
             )
@@ -352,6 +354,7 @@ class OverlayWindow(QWidget):
                 text_opacity=self._settings.text_opacity,
                 highlight=message.message_id in self._highlight_until,
                 sender_width=sender_width,
+                backdrop_opacity=self._settings.backdrop_opacity,
             )
             row.setFixedWidth(row_width)
             row.layout().activate()
@@ -379,7 +382,7 @@ class OverlayWindow(QWidget):
     def paintEvent(self, event) -> None:
         super().paintEvent(event)
         alpha = self.backdrop_alpha
-        if alpha <= 0 and not self._editing:
+        if not self._editing:
             return
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
@@ -576,7 +579,7 @@ class OverlayWindow(QWidget):
         if self._native_windows and not acquired:
             self.hide_overlay()
             self.activation_failed.emit(
-                "无法激活输入。请确认当前程序没有使用更高的管理员权限。"
+                tr("无法激活输入。请确认当前程序没有使用更高的管理员权限。")
             )
             return
         prepare_input_method(int(self.winId()))

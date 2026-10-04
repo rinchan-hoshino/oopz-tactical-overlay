@@ -1,4 +1,5 @@
 from __future__ import annotations
+from .i18n import tr
 
 from dataclasses import replace
 from PySide6.QtCore import QPointF, QRectF, Qt, Signal
@@ -20,9 +21,9 @@ class HudPreview(QWidget):
 
     def __init__(self, settings: AppSettings, parent=None) -> None:
         super().__init__(parent)
-        self.setMinimumHeight(264)
+        self.setMinimumHeight(180)
         self.setMinimumWidth(260)
-        self.setAccessibleName("游戏消息预览")
+        self.setAccessibleName(tr("游戏消息预览"))
         self.settings = settings
         self.mode = "passive"
         self.light_scene = True
@@ -59,8 +60,7 @@ class HudPreview(QWidget):
         self.settings = settings
         self.composer.configure(settings)
         self.hud.setStyleSheet(
-            "QFrame#previewHud { border: none; border-radius: 5px;"
-            f"background-color: rgba(10,17,16,{round(settings.backdrop_opacity * 2.55)}); }}"
+            "QFrame#previewHud { border: none; background: transparent; }"
         )
         self._render_rows()
 
@@ -91,7 +91,8 @@ class HudPreview(QWidget):
             ]
         for message in messages:
             self.rows.addWidget(
-                MessageRow(message, self.settings.font_size, self.settings.text_opacity)
+                MessageRow(message, self.settings.font_size, self.settings.text_opacity,
+                           backdrop_opacity=self.settings.backdrop_opacity)
             )
         self._resize_sender_column()
 
@@ -124,9 +125,9 @@ class HudPreview(QWidget):
         painter.setClipPath(clip)
         gradient = QLinearGradient(0, 0, self.width(), self.height())
         colors = (
-            ("#b9c8bf", "#d8d9bc", "#96ac95")
+            ("#539dd4", "#fae1b5", "#204515")
             if self.light_scene
-            else ("#152326", "#293a36", "#5a6049")
+            else ("#080a14", "#151a2d", "#07080f")
         )
         for stop, color in zip((0, 0.55, 1), colors):
             gradient.setColorAt(stop, QColor(color))

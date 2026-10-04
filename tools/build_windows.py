@@ -60,8 +60,8 @@ def main() -> None:
             f"--output-dir={dist}",
             f"--output-filename={PRODUCT}.exe",
             "--company-name=RinChan",
-            f"--product-name={APP_NAME}",
-            "--file-description=纸条 - 游戏消息",
+            "--product-name=纸条 TypeSlip",
+            "--file-description=纸条 TypeSlip",
             f"--file-version={windows_version}",
             f"--product-version={windows_version}",
             "--copyright=Copyright 2026 RinChan",
@@ -70,6 +70,7 @@ def main() -> None:
             # browser login/voice runtime and test fixtures are not used here.
             "--nofollow-import-to=oopz_sdk.testing,playwright,pytest",
             "--include-package-data=certifi",
+            f"--include-data-files={ROOT / 'src/oopz_overlay/copy_catalog.json'}=oopz_overlay/copy_catalog.json",
             f"--report={build / 'compilation-report.xml'}",
             str(ROOT / "tools" / "windows_entry.py"),
         ],

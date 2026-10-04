@@ -1,4 +1,5 @@
 from __future__ import annotations
+from .i18n import tr
 
 import importlib
 import os
@@ -135,13 +136,13 @@ class AppController(QObject):
         self.overlay.visibility_hotkey_pressed.connect(self._toggle_visibility)
         self.overlay.activation_failed.connect(self._show_warning)
 
-        self._update_status = "等待检查更新"
+        self._update_status = tr("等待检查更新")
         if (self.state_root / "update-error.json").is_file():
-            self._update_status = "上次更新失败，本次启动后会重试"
+            self._update_status = tr("上次更新失败，本次启动后会重试")
         self.tray = QSystemTrayIcon(self._icon(), self)
         self._update_tray_tooltip()
         menu = QMenu()
-        quit_action = menu.addAction("退出")
+        quit_action = menu.addAction(tr("退出"))
         quit_action.triggered.connect(self.shutdown)
         self.tray.setContextMenu(menu)
         self.tray.activated.connect(self._tray_activated)
@@ -177,7 +178,7 @@ class AppController(QObject):
         if self.overlay.is_active or self.overlay.is_editing:
             return
         if not self.overlay.is_connected:
-            self._show_warning("尚未连接 Oopz，请从托盘打开设置查看连接状态。")
+            self._show_warning(tr("尚未连接 Oopz，请从托盘打开设置查看连接状态。"))
             return
         if self.setup_dialog is not None:
             self.setup_dialog.hide()
@@ -243,7 +244,7 @@ class AppController(QObject):
         self.setup_dialog = dialog
         dialog.set_update_status(self._update_status)
         dialog.set_connection_status(
-            self.overlay.status.text() or "未连接", self.overlay.is_connected
+            self.overlay.status.text() or tr("未连接"), self.overlay.is_connected
         )
         dialog.show()
         dialog.raise_()
@@ -405,13 +406,13 @@ class AppController(QObject):
         elif not settings.is_ready:
             self._connected_key = ()
             self.gateway.disconnect()
-            self.overlay.set_connection_status("请选择 Oopz 文字频道", False)
+            self.overlay.set_connection_status(tr("请选择 Oopz 文字频道"), False)
 
     def _save_settings(self) -> None:
         try:
             self.store.save(self.settings)
         except OSError:
-            self._show_warning("设置暂时无法保存，请检查磁盘空间和文件权限。")
+            self._show_warning(tr("设置暂时无法保存，请检查磁盘空间和文件权限。"))
 
     def _pause_hotkeys(self, paused: bool) -> None:
         try:
@@ -521,8 +522,8 @@ class AppController(QObject):
         }
         self._warnings[text] = now
         self.tray.showMessage(
-            APP_NAME,
-            text,
+            tr(APP_NAME),
+            tr(text),
             QSystemTrayIcon.MessageIcon.Warning,
             5000,
         )
@@ -552,7 +553,7 @@ class AppController(QObject):
 
     def _on_update_progress(self, progress: UpdateProgress) -> None:
         if progress.phase == "checking":
-            text = "正在检查更新"
+            text = tr("正在检查更新")
         elif progress.phase == "current":
             text = f"已是最新版 v{progress.version}"
         elif progress.phase == "downloading":
@@ -561,7 +562,7 @@ class AppController(QObject):
         elif progress.phase == "ready":
             text = f"v{progress.version} 已下载，重启后更新"
         else:
-            text = "检查更新失败，下次启动重试"
+            text = tr("检查更新失败，下次启动重试")
         self._update_status = text
         if progress.phase in {"current", "ready"}:
             (self.state_root / "update-error.json").unlink(missing_ok=True)
@@ -570,12 +571,12 @@ class AppController(QObject):
             self.setup_dialog.set_update_status(text)
 
     def _update_tray_tooltip(self) -> None:
-        self.tray.setToolTip(f"{APP_NAME} v{__version__}\n{self._update_status}")
+        self.tray.setToolTip(f"{tr(APP_NAME)} v{__version__}\n{tr(self._update_status)}")
 
     def _on_update_ready(self, version: str) -> None:
         self.tray.showMessage(
-            APP_NAME,
-            f"{version} 已下载，将在下次启动时自动更新。",
+            tr(APP_NAME),
+            tr(f"{version} 已下载，将在下次启动时自动更新。"),
             QSystemTrayIcon.MessageIcon.Information,
             5000,
         )
@@ -729,7 +730,7 @@ def main() -> int:
     state_root = AppController._state_root()
 
     app = QApplication(sys.argv)
-    app.setApplicationName(APP_NAME)
+    app.setApplicationName(tr(APP_NAME))
     app.setWindowIcon(app_icon())
     app.setOrganizationName("RinChan")
     app.setFont(QFont(FONT_FAMILY))

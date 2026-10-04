@@ -1,4 +1,5 @@
 from __future__ import annotations
+from .i18n import tr
 
 from collections.abc import Mapping
 from typing import Any
@@ -23,27 +24,27 @@ def _text(source: Any) -> str:
         for attachment in attachments
     }
     if "IMAGE" in attachment_types:
-        return "[图片]"
+        return tr("[图片]")
     if "VIDEO" in attachment_types:
-        return "[视频]"
+        return tr("[视频]")
     if "AUDIO" in attachment_types:
-        return "[语音]"
+        return tr("[语音]")
     if attachment_types:
-        return "[文件]"
+        return tr("[文件]")
 
     message_type = str(getattr(source, "type", "") or "").upper()
     if message_type == "STICKER":
-        return "[表情]"
+        return tr("[表情]")
     if message_type == "IMAGE":
-        return "[图片]"
+        return tr("[图片]")
 
     for field in ("text", "content"):
         value = getattr(source, field, "")
         if isinstance(value, str) and value:
             if value.startswith("![IMAGE"):
-                return "[图片]"
+                return tr("[图片]")
             return _clean_text(value)
-    return "[非文字消息]"
+    return tr("[非文字消息]")
 
 
 def choose_current_area(
@@ -91,7 +92,7 @@ def map_message(
         timestamp_us=timestamp_us,
         sender_id=sender_id,
         sender_name=names.get(sender_id)
-        or ("我" if sender_id == own_uid else sender_id[-6:] or "未知"),
+        or (tr("我") if sender_id == own_uid else sender_id[-6:] or tr("未知")),
         text=_text(source),
         mine=sender_id == own_uid,
     )

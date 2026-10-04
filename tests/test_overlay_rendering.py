@@ -45,9 +45,9 @@ def test_overlay_keeps_the_window_background_transparent(monkeypatch) -> None:
     image = window.grab().toImage()
     blank = image.pixelColor(image.width() - 2, 2)
     input_center = window.input.mapTo(window, window.input.rect().center())
-    input_line_local = window.composer.rect().center()
-    input_line_local.setY(0)
-    input_line = window.composer.mapTo(window, input_line_local)
+    input_line_local = window.input.rect().center()
+    input_line_local.setY(window.input.rect().bottom())
+    input_line = window.input.mapTo(window, input_line_local)
 
     assert blank.alpha() == 0
     assert image.pixelColor(input_center).alpha() == window.backdrop_alpha

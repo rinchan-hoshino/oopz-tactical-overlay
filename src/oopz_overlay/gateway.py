@@ -1,4 +1,5 @@
 from __future__ import annotations
+from .i18n import tr
 
 import asyncio
 import logging
@@ -355,7 +356,7 @@ class GatewayRuntime:
             except Exception as exc:
                 self._emit(
                     "history_error",
-                    "历史消息暂时无法读取，实时消息仍会继续接收。",
+                    tr("历史消息暂时无法读取，实时消息仍会继续接收。"),
                     generation=generation,
                 )
                 LOGGER.debug("History request failed: %s", type(exc).__name__)
@@ -383,7 +384,7 @@ class GatewayRuntime:
             if generation == self._generation:
                 self._ready = False
                 self._emit(
-                    "status", "连接中断，正在重连…", False, generation=generation
+                    "status", tr("连接中断，正在重连…"), False, generation=generation
                 )
 
         async def on_close(_info: object) -> None:
