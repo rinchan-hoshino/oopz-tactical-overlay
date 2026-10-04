@@ -1433,5 +1433,18 @@
       "Shortcut is already in use by another application"
     ],
     "trusted": []
+  },
+  {
+    "id": "startup_failure",
+    "source": [
+      "纸条启动失败，请重新下载后再试。详情见 startup.log。"
+    ],
+    "zh": [
+      "纸条启动失败，请重新下载后再试。详情见 startup.log。"
+    ],
+    "en": [
+      "TypeSlip failed to start. Please re-download and try again. See startup.log for details."
+    ],
+    "trusted": []
   }
 ]

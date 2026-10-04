@@ -51,3 +51,23 @@ def test_english_interface_preserves_channel_names_and_message_content(monkeypat
     assert '中文消息' in [label.text() for label in row.findChildren(QLabel)]
     dialog.close()
     app.processEvents()
+
+
+def test_preview_scene_comparison_changes_backdrop_and_preserves_draft():
+    from oopz_overlay.settings_dialog import SetupDialog
+    app = QApplication.instance() or QApplication([])
+    dialog = SetupDialog(AppSettings())
+    dialog.show()
+    dialog.preview.set_mode('input')
+    dialog.preview.composer.edit.setText('保留这条草稿')
+    lightness = []
+    for button in reversed(dialog.scene_buttons.buttons()):
+        button.click()
+        app.processEvents()
+        preview = dialog.preview
+        image = preview.grab().toImage()
+        lightness.append(image.pixelColor(preview.width() // 2, 10).lightnessF())
+        assert preview.composer.edit.text() == '保留这条草稿'
+        assert len(preview._messages) == 3
+    assert lightness[0] - lightness[1] > 0.35
+    dialog.close()

@@ -715,7 +715,7 @@ def _sdk_import_probe() -> int:
 
 def main() -> int:
     if os.name != "nt":
-        raise SystemExit("纸条目前仅支持 Windows。")
+        raise SystemExit(tr("纸条目前仅支持 Windows。"))
     arguments = sys.argv[1:]
     if "--apply-update" in arguments:
         index = arguments.index("--apply-update")

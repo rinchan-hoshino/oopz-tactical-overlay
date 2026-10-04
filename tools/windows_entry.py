@@ -28,6 +28,10 @@ def _record(message: str) -> None:
         pass
 
 
+def _startup_copy(value: str) -> str:
+    return value
+
+
 def _unhandled_exception(exception_type, exception, traceback_object) -> None:
     details = "".join(
         traceback.format_exception(exception_type, exception, traceback_object)
@@ -39,6 +43,7 @@ if __name__ == "__main__":
     sys.excepthook = _unhandled_exception
     _record(f"START argv={sys.argv[1:]!r}")
     try:
+        from oopz_overlay.i18n import tr as _startup_copy
         from oopz_overlay.main import main
 
         exit_code = main()
@@ -49,8 +54,8 @@ if __name__ == "__main__":
 
             ctypes.windll.user32.MessageBoxW(
                 None,
-                "纸条启动失败，请重新下载后再试。详情见 startup.log。",
-                "纸条",
+                _startup_copy("纸条启动失败，请重新下载后再试。详情见 startup.log。"),
+                _startup_copy("纸条"),
                 0x10,
             )
         raise
