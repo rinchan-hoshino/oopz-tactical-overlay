@@ -6,8 +6,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from oopz_overlay.gateway import GatewayCallbacks, GatewayRuntime
-from oopz_overlay.settings import AppSettings
+from oopz_overlay.adapters.oopz import GatewayCallbacks, GatewayRuntime
+from oopz_overlay.core.settings import AppSettings
 
 
 @pytest.fixture
@@ -80,8 +80,8 @@ def transport(monkeypatch):
         async def stop(self):
             self.stopped.set()
 
-    monkeypatch.setattr("oopz_overlay.gateway.OopzRESTClient", Rest)
-    monkeypatch.setattr("oopz_overlay.gateway.OopzWSClient", Socket)
+    monkeypatch.setattr("oopz_overlay.adapters.oopz.OopzRESTClient", Rest)
+    monkeypatch.setattr("oopz_overlay.adapters.oopz.OopzWSClient", Socket)
     runtime = GatewayRuntime(
         GatewayCallbacks(
             timeline=lambda *_: None,

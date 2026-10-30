@@ -3,7 +3,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from oopz_overlay import sounds
+from oopz_overlay.adapters import win32 as sounds
 
 
 def test_sounds_come_from_installed_media_and_keep_theme_paths(tmp_path, monkeypatch):

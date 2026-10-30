@@ -1,6 +1,6 @@
 import pytest
 
-from oopz_overlay.win32_input import (
+from oopz_overlay.adapters.win32 import (
     HOTKEY_ACTIVATE_ID,
     HOTKEY_VISIBILITY_ID,
     MOD_CONTROL,

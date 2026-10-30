@@ -2,7 +2,7 @@ import os
 
 import pytest
 
-from oopz_overlay.dpapi import WindowsDpapiProtector
+from oopz_overlay.adapters.session import WindowsDpapiProtector
 
 
 @pytest.mark.skipif(os.name != "nt", reason="Windows DPAPI is Windows-only")

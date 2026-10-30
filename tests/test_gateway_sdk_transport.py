@@ -1,8 +1,8 @@
 from dataclasses import fields
 from types import SimpleNamespace
 
-from oopz_overlay.gateway import GatewayCallbacks, GatewayRuntime
-from oopz_overlay.settings import AppSettings
+from oopz_overlay.adapters.oopz import GatewayCallbacks, GatewayRuntime
+from oopz_overlay.core.settings import AppSettings
 
 
 def test_gateway_callbacks_have_no_ui_automation_channel_callback() -> None:

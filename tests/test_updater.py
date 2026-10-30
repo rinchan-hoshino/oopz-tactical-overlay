@@ -8,8 +8,8 @@ from pathlib import Path
 
 import pytest
 
-from oopz_overlay import updater
-from oopz_overlay.updater import (
+from oopz_overlay.adapters import updater
+from oopz_overlay.adapters.updater import (
     UpdateManifest,
     _replace_with_retry,
     download_verified,

@@ -1,0 +1,17 @@
+[
+  [
+    "{root}/OopzTacticalOverlay-updater-11235.exe",
+    "--apply-update",
+    "{root}/OopzTacticalOverlay.exe",
+    "{root}/updates/OopzTacticalOverlay-0.12.0.exe",
+    "11235",
+    "{root}/pending-update.json",
+    "84240ea7d8e3fc710d1a3b8fb12991a1341a8a91a2f3a92a9150387599815a01",
+    "52"
+  ],
+  [
+    "{root}/OopzTacticalOverlay.exe",
+    "--cleanup-updater",
+    "{root}/OopzTacticalOverlay-updater-11235.exe"
+  ]
+]
