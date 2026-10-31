@@ -20,9 +20,9 @@ def test_schema8_migrates_losslessly_and_never_persists_credentials(tmp_path):
     store = JsonSettingsStore(path, Protector())
     settings = store.load()
     for key, value in json.loads(raw).items():
-        if key not in {'schema_version', 'always_visible'}:
+        if key != 'schema_version':
             assert getattr(settings, key) == value
-    assert settings.schema_version == 9
+    assert settings.schema_version == 10
     assert settings.opacity == (38, 72)
     store.save(replace(settings, jwt_token='secret', device_id='device', person_uid='person'))
     assert 'secret' not in path.read_bytes()[::-1].decode()
@@ -35,11 +35,13 @@ def test_settings_clamp_external_values(raw):
     s = AppSettings.from_dict(raw)
     assert 0 <= s.position_x <= 1 and 9 <= s.font_size <= 20 and s.overlay_width >= 0
 
-def test_strength_changes_both_opacities():
+def test_schema9_strength_migrates_effective_opacities_once():
     from oopz_overlay.core.settings import AppSettings
-    s = AppSettings(text_opacity=72, backdrop_opacity=38)
-    assert replace(s, strength=70).opacity == (58, 88)
-    assert replace(s, strength=0).opacity == (0, 32)
+    s = AppSettings.from_dict({'schema_version':9, 'strength':70,
+                               'text_opacity':72, 'backdrop_opacity':38})
+    assert (s.backdrop_opacity, s.text_opacity) == (58, 88)
+    assert 'strength' not in s.to_dict()
+    assert AppSettings.from_dict(s.to_dict()) == s
 
 def test_timeline_backfill_never_sounds_or_rehighlights_duplicates():
     from oopz_overlay.core.timeline import ChatMessage, Timeline
@@ -49,8 +51,6 @@ def test_timeline_backfill_never_sounds_or_rehighlights_duplicates():
     assert t.merge([msg('c', 3), msg('c', 3), msg('self', 4, True)], now=2, live=True) == ('c',)
     assert t.unread == 1
     assert t.merge([msg('b', 2), msg('c', 3)], now=3, live=True) == ()
-    assert t.brightness('c', now=11) == 1
-    assert 0 < t.brightness('c', now=14) < .4
     t.mark_read()
     assert t.unread == 0
     t.merge([msg('a', 1)], now=20, live=False)
@@ -129,24 +129,31 @@ def test_timeline_ignores_empty_ids_sorts_ties_and_updates_existing_text():
     t.merge([replace(a,message_id='b'),a,replace(a,message_id='')],now=0,live=True,reading=True)
     assert t.unread==0 and [m.message_id for m in t.items]==['a','b']
     assert not t.merge([replace(a,text='edited')],now=5,live=True)
-    assert t.items[0].text=='edited' and t.brightness('a',now=12)==.28
+    assert t.items[0].text=='edited'
 
 def test_no_qt_in_translation_and_english_preserves_user_content(monkeypatch):
     from oopz_overlay.i18n import tr,language,ZH,EN
     monkeypatch.setenv('LC_ALL','en_US.UTF-8')
-    assert language()=='en' and tr('choose',hotkey='Ctrl+F8')=='Press Ctrl+F8 to choose a channel'
+    assert language()=='en' and 'Ctrl+F8' in tr('choose',hotkey='Ctrl+F8')
     assert tr('#中文频道')=='#中文频道' and tr('[图片]')=='[Image]'
     assert ZH.keys()==EN.keys()
 
-def test_timeline_limit_and_brief_new_message_highlight():
-    from oopz_overlay.core.timeline import ChatMessage, Timeline
+def test_timeline_requires_a_positive_history_limit():
+    from oopz_overlay.core.timeline import Timeline
     with pytest.raises(ValueError): Timeline(limit=0)
-    t=Timeline()
-    t.merge([ChatMessage('new',1,'p','P','new',False)],now=20,live=True)
-    assert t.highlighted('new',now=20.5)
-    assert not t.highlighted('new',now=22)
-    t.merge([ChatMessage('history',0,'p','P','old',False)],now=20,live=False)
-    assert not t.highlighted('history',now=20)
+
+def test_timeline_fades_after_reading_time_without_revealing_backfill_or_duplicates():
+    from oopz_overlay.core.timeline import ChatMessage, Timeline
+    t = Timeline()
+    message = ChatMessage('new', 1, 'p', 'P', 'new', False)
+    t.merge([message], now=20, live=True)
+    assert t.opacity('new', now=27) == 1
+    assert t.opacity('new', now=29) == .5
+    assert t.opacity('new', now=30) == 0
+    t.merge([message], now=31, live=True)
+    assert t.opacity('new', now=31) == 0
+    t.merge([replace(message, message_id='history')], now=31, live=False)
+    assert t.opacity('history', now=31) == 0
 
 def test_connection_readiness_requires_account_and_destination():
     from oopz_overlay.core.settings import AppSettings

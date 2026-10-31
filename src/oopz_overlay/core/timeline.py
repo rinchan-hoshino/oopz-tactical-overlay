@@ -22,8 +22,8 @@ class Timeline:
         if self.limit < 1:
             raise ValueError('limit must be positive')
 
-    def highlighted(self, message_id: str, *, now: float) -> bool:
-        return 0 <= now - self._arrivals.get(message_id, now - 12) < 1.2
+    def opacity(self, message_id: str, *, now: float) -> float:
+        return max(0.0, min(1.0, (10 - (now - self._arrivals.get(message_id, now - 12))) / 2))
 
     @property
     def items(self) -> tuple[ChatMessage, ...]:
@@ -46,10 +46,6 @@ class Timeline:
         if not reading:
             self.unread += len(notify)
         return tuple(notify)
-
-    def brightness(self, message_id: str, *, now: float) -> float:
-        age = now - self._arrivals.get(message_id, now - 12)
-        return max(0.28, 1 - max(0, age - 10) * 0.36)
 
     def mark_read(self) -> None:
         self.unread = 0

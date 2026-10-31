@@ -48,9 +48,11 @@ def test_send_returns_passive_and_failure_restores_scoped_draft(controller):
 def test_settings_preview_does_not_pollute_real_history(controller):
     c=controller
     c.open_settings()
-    assert c.hud.messages.timeline.items and not c.timeline.items
-    c.settings_window.close()
+    assert c.settings_window.preview.hud.messages.timeline.items and not c.timeline.items
     assert c.hud.messages.timeline is c.timeline
+    assert not c.hud.isVisible()
+    c.settings_window.close()
+    assert c.hud.messages.timeline is c.timeline and c.hud.isVisible()
 
 def test_logout_discards_connection_and_stale_timeline(controller):
     c=controller
@@ -77,3 +79,36 @@ def test_legacy_local_socket_opens_existing_settings(qapp=None):
             assert opened==[True]
             client.disconnectFromServer()
         finally: instance.close()
+
+
+def test_adjust_position_uses_samples_and_returns_to_settings(controller):
+    c=controller; c.open_settings(); c.settings_window.edit_button.click()
+    assert c.hud.state.mode == 'adjust'
+    assert c.hud.messages.timeline.items and not c.timeline.items
+    assert not c.hud.composer.isVisible()
+    c.action('cancel')
+    assert c.settings_window.isVisible() and c.state.mode == 'passive'
+    assert c.hud.messages.timeline is c.timeline
+
+
+def test_temporary_messages_allow_input_and_respect_manual_visibility(controller):
+    c=controller
+    c.configure(replace(c.state.settings, always_visible=False, channel_id='c'))
+    c.gateway_event(GatewayEvent(c.state.generation, 'status', ('connected', True)))
+    # The empty transparent window stays available to receive new messages.
+    assert c.hud.isVisible()
+    c.action('activate'); assert c.hud.isVisible()
+    c.action('cancel'); assert c.hud.isVisible()
+    c.action('toggle'); assert not c.hud.isVisible()
+    c.configure(replace(c.state.settings, always_visible=True))
+    assert not c.hud.isVisible()
+
+
+def test_visibility_hotkey_can_show_messages_when_continuous_display_is_off(controller):
+    c = controller
+    c.configure(replace(c.state.settings, always_visible=False, channel_id='c'))
+    c.gateway_event(GatewayEvent(c.state.generation, 'status', ('connected', True)))
+    c.action('toggle')
+    assert not c.hud.isVisible()
+    c.action('toggle')
+    assert c.hud.isVisible()

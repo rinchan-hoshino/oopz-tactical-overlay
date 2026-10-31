@@ -66,3 +66,14 @@ def test_unavailable_audio_never_interrupts_chat(tmp_path, monkeypatch, error):
         ),
     )
     assert not sounds.play_sound("notify.wav")
+
+
+def test_short_notification_sounds_are_recommended_before_alarm_files(tmp_path, monkeypatch):
+    for name in ('Alarm01.wav', 'Windows Navigation Start.wav', 'Windows Menu Command.wav',
+                 'Windows Feed Discovered.wav', 'Windows Information Bar.wav'):
+        (tmp_path / name).write_bytes(b'wave')
+    monkeypatch.setattr(sounds, '_media_root', lambda: tmp_path)
+    keys = [key for _, key in sounds.system_sounds()]
+    assert keys[:4] == ['Windows Navigation Start.wav', 'Windows Menu Command.wav',
+                        'Windows Feed Discovered.wav', 'Windows Information Bar.wav']
+    assert keys[-1] == 'Alarm01.wav'

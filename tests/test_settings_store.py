@@ -69,7 +69,7 @@ def test_legacy_settings_ignore_removed_process_and_numeric_position(tmp_path) -
 
     loaded = JsonSettingsStore(path, ReversingProtector()).load()
 
-    assert loaded.schema_version == 9
+    assert loaded.schema_version == 10
     assert not hasattr(loaded, "target_process")
     assert loaded.jwt_token == ""
     assert loaded.area_id == "removed"
@@ -87,7 +87,7 @@ def test_existing_hotkey_is_preserved_while_new_default_is_f8(tmp_path) -> None:
 
     loaded = JsonSettingsStore(path, ReversingProtector()).load()
 
-    assert loaded.schema_version == 9
+    assert loaded.schema_version == 10
     assert loaded.hotkey == "Enter"
     assert loaded.visibility_hotkey == "F9"
     assert loaded.font_size == 12
