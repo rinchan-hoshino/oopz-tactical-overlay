@@ -84,10 +84,19 @@
 - 备份位于服务器 `/app/state/archive/releases/oopz-tactical-overlay/backup-1.0.0-before-1.0.1-20261031/`；本机升级起点、日志、JSON 与截图在 `~/.rin/work/typeslip/release-101/`，报告为 `~/.rin/work/typeslip/release-101-report.md`。本轮 Mac 复跑 113 passed / 1 skipped（Windows DPAPI），Windows 测试任务、进程及应用锁已清理。
 - rinutm 仍仅 C: 可写，实际跨盘安装入口未验证；真实 Oopz 登录收发及干净 Windows 环境未验证，不计为通过。
 
-## 1.0.2 本地修复验收（未发布）
+## 1.0.2 本地修复验收
 
 - 基于 main `0e72f4be9` 的 `fix/1.0.2`：输入热键切换、空回车退出、IME组合保护、浮层导航、历史锚定（含80条淘汰和动画中来消息）、平滑及高分辨率滚轮、拖动滚动条和历史键盘导航；保留1.0已记录的交互改进。完整40项对照见 [交互审计](interaction-audit.md)。
 - 图标采用深色圆角底、-8°白纸折角、HUD强调色 #DCC49E；SVG源、16/20/24/32/48/64/128/256 PNG及8帧ICO保存在包内assets，`tools/build/render_icons.py` 可重建；exe、托盘和窗口共用这些导出。
 - Mac offscreen：140 passed / 1 skipped（Windows DPAPI）；rinutm原生桌面：141 passed。原生探针验证真实中文IME、全局热键、框外滚轮、焦点归还、频道键盘选择、Ctrl+滚轮与F9。实际exe验证三条退化、固定消息边界和滚动往返像素一致、版本与全部图标资源、托盘菜单退出及热键释放。32个构建输入哈希与Mac一致。
-- 本地交付包38,811,648字节，SHA-256 `1a13f577fb4f9ad1925172ad11908a9a09d199d6749758cde5bbb3b4b3798f40`。exe、日志及结果在 `~/.rin/work/typeslip/fix-102/`，截图在 `shots-102/`，报告 `fix-102-report.md`；未推送、未发布，不计为公网升级验收。
+- 本地交付包38,811,648字节，SHA-256 `1a13f577fb4f9ad1925172ad11908a9a09d199d6749758cde5bbb3b4b3798f40`。exe、日志及结果在 `~/.rin/work/typeslip/fix-102/`，截图在 `shots-102/`，报告 `fix-102-report.md`；当时未推送、未发布，公网升级结果见下文。
 - 托盘探针初版没有记录首次点击命中，是否误点底层窗口无法确认；后续查明测试生成的纸条通知遮挡图标，已加入真实可见性/命中校验、仅关闭纸条通知及包含分层窗口的截图，见审计附录隔离记录。没有检查或补偿QMT状态。原生聊天是夹具，exe滚动用自带调整样例，真实Oopz/游戏和干净Windows未验收。
+
+### 1.0.2 公网升级验收（2026-10-31）
+
+- 沿用上述已验收发行包，上传前及服务器接收后重算 SHA-256 一致，未改生产代码或重打包。公网从 1.0.1（39,041,536 字节，SHA-256 `a50e23f35fd890f7e2e57969679586f2f31447d1824f90edba4fdfe4df3d7596`）更新为 1.0.2；最终 `publishedAt=2026-10-31T07:11:08.577588+00:00`。
+- 先在公开目录之外备份六个旧文件并逐个校验；版本目录不可变，原入口、TypeSlip.exe、Zhitiao.exe、校验清单和使用说明同步，入口原子替换，latest.json 最后替换。Mac 从公共 HTTPS 重下版本包及三个入口，大小和 SHA-256 全部一致；Windows 升级后重读公共清单一致，未重启服务。
+- Windows 仅通过 ssh rinutm 操作，使用公网原始 1.0.1 exe 和隔离 `LOCALAPPDATA=C:\Users\rin\typeslip-release-102\state`。自动下载、待更新记录与缓存校验、运行中保持旧安装文件、正常退出、重启后旧助手替换并启动 1.0.2.0 全部通过；助手退出码 0，待更新记录、下载缓存、助手及同盘暂存清除，无 update-error.json。
+- 1.0.1 实际 DPAPI 设置存储及 UI 保存生成 schema 10 样例；升级后频道、显示器、位置、尺寸、字号、文字72%/暗角38%、持续显示关闭、Windows Notify.wav、Ctrl+F8/Alt+F9 逐字段不变。输入热键可用，正常退出后两个热键均可重新注册。升级后的设置、任务栏和托盘图标截图均已人工核对，新图标生效。
+- 发布前探针的菜单按键和首轮坐标点击未能完成退出，另有重复创建隔离目录错误；当时公网尚未变更。坐标点击前已核验实际命中纸条 PID；最终改为向纸条自己的 Qt 托盘窗口发送菜单消息，再对已核验 PID 的退出项执行 UIA Invoke，干净重跑通过。发布及升级阶段无失败、无需回滚；未操作 QMT 进程或窗口，本轮测试进程和计划任务已清理。
+- 服务器备份：`/app/state/archive/releases/oopz-tactical-overlay/backup-1.0.1-before-1.0.2-20261031/`。本机报告 `~/.rin/work/typeslip/release-102-report.md`；升级起点、探针、结果与截图在 `release-102/`。本轮 Mac 全量 140 passed / 1 skipped（Windows DPAPI）；沿用本地已验收 Windows 原生 141 passed。实际跨盘安装、真实 Oopz 登录收发、真实游戏及干净 Windows 环境本轮未验证。
