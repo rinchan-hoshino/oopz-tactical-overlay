@@ -31,7 +31,7 @@
 
 ## 1.0.0 重做：本轮范围与兼容记录
 
-首轮只修改本地源码和测试，未提交、未发布、未访问线上、未连接 Windows。后续本地验证已完成并提交在 `redesign-1.0`；1.0.0 仍未完成发行验收，发布前必须以 0.12.0 做真实公网升级和跨盘安装入口验证。
+首轮只修改本地源码和测试，未提交、未发布、未访问线上、未连接 Windows。后续本地验证已完成并提交在 `redesign-1.0`；1.0.0 的 Windows 与公网升级验收见下文，实际跨盘安装入口仍待验证。
 
 - `src/oopz_overlay/core` 不依赖 Qt；SDK、登录态、Win32 和更新在 `adapters`，UI 在 `ui`，`app.py` 负责组装。
 - schema 8 原字段经原 DPAPI 解密后读取；状态目录仍为 `%LOCALAPPDATA%/RinChan/OopzTacticalOverlay/state.bin`。schema 9 保留原底色、文字透明度为基准，一个浓淡值（默认 50）同时调整两者，初次迁移不改变两项透明度。设计未规定映射公式，此处以无损为先；若改变映射，须复核迁移样例。
@@ -44,10 +44,20 @@
 - 旧 artifacts、release、assets、validation 文档、旧原生探针与重写前源码/测试已移到 `/Users/rin/.rin/archive/typeslip-artifacts-20261030/`，没有删除归档内容。
 - 仓库额外保留 `pyproject.toml`、`uv.lock` 和 `.gitignore`：它们是依赖锁定、安装和构建所必需的元数据；这是对设计「只留」目录列表的最小例外。
 
-本轮运行记录与截图目录为 `/Users/rin/.rin/work/typeslip/`；Windows 的焦点、IME、全局热键、真实 DPAPI 和实际升级结果留待下一轮，不以 offscreen 截图替代。
+本轮运行记录与截图目录为 `/Users/rin/.rin/work/typeslip/`；首轮 offscreen 截图不替代 Windows 的焦点、IME、全局热键、真实 DPAPI 和实际升级验证。
 
 ### 本地联网验证（2026-10-30）
 
 仓库 `.venv` 已安装项目与 dev 依赖（PySide6-Essentials 6.12.0、oopz-sdk 0.15.0）。全量 `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest`：78 passed、1 skipped；唯一跳过为 Windows DPAPI 实机测试。`pip check` 与 `git diff --check` 通过，本次未改测试断言或生产代码。
 
 `tests/tools/render_ui.py` 生成并人工检查七张截图：HUD 平时、输入、频道列表、首次启动、未登录，设置亮/暗。offscreen 没有系统主题通知，设置截图使用 Fusion 和显式 QPalette 模拟明暗；这验证配色和布局，不代表 Windows 原生外观验收。截图与依赖快照、测试日志均留在仓库外的 `/Users/rin/.rin/work/typeslip/`。未 push、未合并 main、未发布、未操作 Windows。
+
+### Windows 与公网发行验证（2026-10-31）
+
+- 第二轮在 rinutm（Windows 11 ARM64 / x64 Python 3.11.9）构建并通过原生桌面全量测试：79 passed，DPAPI、中文 IME、焦点恢复和全局热键通过；记录见 `/Users/rin/.rin/work/typeslip/round2-report.md`。本次复跑 Mac offscreen：78 passed、1 skipped（Windows DPAPI）。
+- “更新检查失败”来自第二轮探针主动设置的 `127.0.0.1:9` 代理；去掉代理后还复现了虚拟机缺少 ISRG Root X1 的证书错误。Windows 正常 HTTPS 请求触发系统根证书自动补齐后，原发行包检查正常；未关闭证书校验、未修改更新代码或重打包，版本比较和公网清单解析通过。
+- 公网从 0.12.0（SHA-256 `d542b8f3ff50ed9bc7bcce602445ef45d237179292975d68cdfccc03fe9a99f7`）升级到 1.0.0（39,011,840 字节，SHA-256 `c560acdb6eb1a34795ea6e0538067ac731299a1a9ade0d2ee31b0a646873a37e`）。版本目录、原入口、TypeSlip.exe、Zhitiao.exe、校验清单与使用说明同步更新，最新清单使用实际发布时间。
+- rinutm 使用实际线上 0.12.0 exe、隔离 LOCALAPPDATA 和旧版 DPAPI 加密的 schema 8 样例：公网自动下载、待更新记录与文件校验、运行中保持旧文件、托盘退出、重新启动、旧助手替换并启动 1.0.0、清除待更新记录和助手均通过。schema 9 保存后逐字段核对设置保留；正常退出后 Ctrl+F8 / Alt+F9 均可重新注册。
+- 首次验收探针只识别 TypeSlip，未识别旧版中文托盘名“纸条”，因此按流程恢复了全部入口文件和旧清单，并从公网核对回滚。修正探针后旧版正常退出，重新发布同一已校验包并完成后续升级验收；未重启服务。
+- 备份：服务器 `/app/state/archive/releases/oopz-tactical-overlay/backup-0.12.0-before-1.0.0-20261031/`；本机报告 `/Users/rin/.rin/work/typeslip/release-report.md`，证据 `release/`，截图 `shots-release/`。公网 HTTPS 清单和发行包已重新下载核对。
+- 实际跨盘安装入口未验证：虚拟机只有 C: 可写；真实 Oopz 登录收发和干净 Windows 系统仍未验证，不计为通过。

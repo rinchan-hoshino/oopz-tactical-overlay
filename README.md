@@ -2,7 +2,7 @@
 
 纸条是 Windows 10/11 的 Oopz 游戏聊天浮层：在窗口化或无边框游戏里看一个文字频道，按键打字，发送后回到游戏。使用本机 Oopz 登录态和社区维护的 [oopz-sdk](https://github.com/tangqingfeng7/Oopzbot-SDK)，不保存登录凭据，不注入游戏。
 
-[下载纸条](https://acv.k-neco.com/tools/oopz-tactical-overlay/OopzTacticalOverlay.exe) · 1.0.0 正在重做，尚未发布；下载入口仍是已发行版本。
+[下载纸条 1.0.0](https://acv.k-neco.com/tools/oopz-tactical-overlay/OopzTacticalOverlay.exe) · 已有用户可从原启动入口自动升级，设置保持不变。
 
 1. 打开并登录 Oopz，加入服务器的语音频道，然后启动纸条。
 2. 按 `F8` 在 HUD 里选一个文字频道；输入时按 `Tab` 或输入 `#` 换频道。
