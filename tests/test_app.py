@@ -91,21 +91,24 @@ def test_adjust_position_uses_samples_and_returns_to_settings(controller):
     assert c.hud.messages.timeline is c.timeline
 
 
-def test_connection_display_preference_does_not_hide_active_input(controller):
+def test_temporary_messages_allow_input_and_respect_manual_visibility(controller):
     c=controller
     c.configure(replace(c.state.settings, always_visible=False, channel_id='c'))
     c.gateway_event(GatewayEvent(c.state.generation, 'status', ('connected', True)))
-    assert not c.hud.isVisible()
-    c.action('activate'); assert c.hud.isVisible()
-    c.action('cancel'); assert not c.hud.isVisible()
-    c.configure(replace(c.state.settings, always_visible=True))
+    # The empty transparent window stays available to receive new messages.
     assert c.hud.isVisible()
+    c.action('activate'); assert c.hud.isVisible()
+    c.action('cancel'); assert c.hud.isVisible()
+    c.action('toggle'); assert not c.hud.isVisible()
+    c.configure(replace(c.state.settings, always_visible=True))
+    assert not c.hud.isVisible()
 
 
 def test_visibility_hotkey_can_show_messages_when_continuous_display_is_off(controller):
     c = controller
     c.configure(replace(c.state.settings, always_visible=False, channel_id='c'))
     c.gateway_event(GatewayEvent(c.state.generation, 'status', ('connected', True)))
+    c.action('toggle')
     assert not c.hud.isVisible()
     c.action('toggle')
     assert c.hud.isVisible()

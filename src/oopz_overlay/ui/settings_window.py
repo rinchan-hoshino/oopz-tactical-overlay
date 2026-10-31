@@ -62,7 +62,7 @@ class Preview(QWidget):
         self.configure(settings)
 
     def configure(self, settings):
-        self.hud.render(AppState(settings=settings, status=''), self.timeline, ())
+        self.hud.render(AppState(settings=replace(settings, always_visible=True), status=''), self.timeline, ())
         self.hud.hint.hide()
 
     def set_scene(self, scene):
@@ -127,6 +127,8 @@ class SettingsWindow(QDialog):
             slider.setRange(20 if key == 'text_opacity' else 0, maximum)
             slider.setValue(getattr(settings, key))
             slider.setAccessibleName(tr(key))
+            if key == 'backdrop_opacity':
+                slider.setToolTip(tr('backdrop_hint'))
             setattr(self, key, slider)
             row.addWidget(slider)
             label = QLabel(f'{slider.value()}%', self)
@@ -137,6 +139,7 @@ class SettingsWindow(QDialog):
             slider.valueChanged.connect(lambda value, k=key: self.change(k, value))
             form.addRow(tr(key), row)
         self.always_visible = QCheckBox(tr('always_visible'), self)
+        self.always_visible.setToolTip(tr('persistence_hint'))
         self.always_visible.setChecked(settings.always_visible)
         self.always_visible.toggled.connect(lambda value: self.change('always_visible', value))
         form.addRow('', self.always_visible)

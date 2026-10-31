@@ -138,15 +138,22 @@ def test_no_qt_in_translation_and_english_preserves_user_content(monkeypatch):
     assert tr('#中文频道')=='#中文频道' and tr('[图片]')=='[Image]'
     assert ZH.keys()==EN.keys()
 
-def test_timeline_limit_and_brief_new_message_highlight():
-    from oopz_overlay.core.timeline import ChatMessage, Timeline
+def test_timeline_requires_a_positive_history_limit():
+    from oopz_overlay.core.timeline import Timeline
     with pytest.raises(ValueError): Timeline(limit=0)
-    t=Timeline()
-    t.merge([ChatMessage('new',1,'p','P','new',False)],now=20,live=True)
-    assert t.highlighted('new',now=20.5)
-    assert not t.highlighted('new',now=22)
-    t.merge([ChatMessage('history',0,'p','P','old',False)],now=20,live=False)
-    assert not t.highlighted('history',now=20)
+
+def test_timeline_fades_after_reading_time_without_revealing_backfill_or_duplicates():
+    from oopz_overlay.core.timeline import ChatMessage, Timeline
+    t = Timeline()
+    message = ChatMessage('new', 1, 'p', 'P', 'new', False)
+    t.merge([message], now=20, live=True)
+    assert t.opacity('new', now=27) == 1
+    assert t.opacity('new', now=29) == .5
+    assert t.opacity('new', now=30) == 0
+    t.merge([message], now=31, live=True)
+    assert t.opacity('new', now=31) == 0
+    t.merge([replace(message, message_id='history')], now=31, live=False)
+    assert t.opacity('history', now=31) == 0
 
 def test_connection_readiness_requires_account_and_destination():
     from oopz_overlay.core.settings import AppSettings

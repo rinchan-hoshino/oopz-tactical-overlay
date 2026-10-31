@@ -22,14 +22,14 @@ class AppSettings:
     screen_name: str = ""
     hotkey: str = "F8"
     visibility_hotkey: str = "F9"
-    position_x: float = 0.5
+    position_x: float = 0.16
     position_y: float = 0.82
     overlay_width: int = 0
     overlay_height: int = 0
     always_visible: bool = True
     font_size: int = 12
     text_opacity: int = 100
-    backdrop_opacity: int = 32
+    backdrop_opacity: int = 15
     notification_sound: str = "Windows Navigation Start.wav"
 
     @classmethod

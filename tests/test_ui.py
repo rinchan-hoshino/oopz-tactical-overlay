@@ -136,12 +136,12 @@ def test_message_rendering_has_solid_outline_and_readable_fill(qapp, aged):
 
 @pytest.mark.parametrize('sender', ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9'])
 @pytest.mark.parametrize('age', [0, 30])
-def test_name_contrast_over_white_including_new_highlight_and_old_messages(qapp, sender, age):
+def test_name_halo_contrast_over_white_for_new_and_old_messages(qapp, sender, age):
     import hashlib
     from collections import Counter
     from time import monotonic
     from PySide6.QtGui import QColor, QImage, QPainter
-    from oopz_overlay.ui.hud import Messages, COLORS
+    from oopz_overlay.ui.hud import Messages, COLORS, OUTLINE
     w = Messages(None)
     w.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
     w.resize(320, 70)
@@ -154,7 +154,11 @@ def test_name_contrast_over_white_including_new_highlight_and_old_messages(qapp,
     painter = QPainter(img); painter.drawPixmap(0, 0, w.grab()); painter.end()
     colors = Counter(img.pixelColor(x, y).rgb() for y in range(img.height()) for x in range(img.width()))
     colors.pop(QColor('white').rgb(), None)
-    background = QColor(colors.most_common(1)[0][0])
+    background = QColor(OUTLINE)
+    # The contrasting halo, rather than the game scene, borders each glyph.
+    assert colors[background.rgb()] > 20
+    assert sum(count for rgb, count in colors.items()
+               if max(QColor(rgb).getRgb()[:3]) < 35) < 2000
     foreground = QColor(COLORS[int.from_bytes(hashlib.sha256(sender.encode()).digest()[:2]) % len(COLORS)])
     assert sum(count for rgb, count in colors.items()
                if max(abs(a-b) for a,b in zip(QColor(rgb).getRgb()[:3], foreground.getRgb()[:3])) <= 3) > 2
@@ -208,3 +212,54 @@ def test_preview_keeps_three_samples_visible_at_largest_font(qapp):
     w.show(); qapp.processEvents()
     assert w.preview.hud.messages.maximum_offset == 0
     w.close()
+
+
+def test_passive_hud_background_is_a_soft_vignette_not_message_ribbons(qapp):
+    from oopz_overlay.ui.hud import sample_timeline
+    h = Hud(); h.resize(500, 220)
+    h.render(AppState(status='', settings=AppSettings(channel_id='c', backdrop_opacity=20)),
+             sample_timeline(), ())
+    h.show(); qapp.processEvents()
+    image = h.grab().toImage()
+    # Blank space between rows is shaded too, and shading dissolves at the edges.
+    assert 0 < image.pixelColor(45, 65).alpha() <= 51
+    assert image.pixelColor(45, 65).alpha() > image.pixelColor(450, 65).alpha()
+    assert image.pixelColor(250, 9).alpha() == 0
+    h.render(replace(h.state, settings=replace(h.state.settings, backdrop_opacity=0)),
+             h.messages.timeline, ())
+    qapp.processEvents()
+    image = h.grab().toImage()
+    assert image.pixelColor(45, 65).alpha() == 0
+    h.close()
+
+
+@pytest.mark.parametrize('connected', [True, False])
+def test_nonpersistent_messages_and_their_background_fade_together(qapp, monkeypatch, connected):
+    from oopz_overlay.ui import hud as module
+    now = 100.0
+    monkeypatch.setattr(module, 'monotonic', lambda: now)
+    h = Hud(); h.resize(400, 160)
+    timeline = Timeline()
+    timeline.merge([ChatMessage('m', 1, 'a', 'Alice', 'Incoming message', False)], now=now, live=True)
+    h.render(AppState(connected=connected, status='connected' if connected else 'reconnecting', settings=AppSettings(
+        channel_id='c', always_visible=False)), timeline, ())
+    h.show(); qapp.processEvents()
+    def alpha():
+        image = h.grab().toImage()
+        rect = h.messages.geometry()
+        scale = image.devicePixelRatio()
+        image = image.copy(int(rect.x()*scale), int(rect.y()*scale),
+                           int(rect.width()*scale), int(rect.height()*scale))
+        return sum(image.pixelColor(x,y).alpha() for y in range(image.height()) for x in range(image.width()))
+    fresh = alpha()
+    now = 109.0
+    halfway = alpha()
+    assert 0 < halfway < fresh * .8
+    now = 111.0
+    assert alpha() == 0
+    h.render(replace(h.state, mode='input'), timeline, ())
+    assert alpha() > 0
+    h.render(replace(h.state, mode='passive', settings=replace(h.state.settings, always_visible=True)), timeline, ())
+    qapp.processEvents()
+    assert alpha() >= fresh
+    h.close()
