@@ -1,6 +1,6 @@
 import json
 
-from oopz_overlay.settings import AppSettings, JsonSettingsStore
+from oopz_overlay.core.settings import AppSettings, JsonSettingsStore
 
 
 class ReversingProtector:
@@ -25,11 +25,11 @@ def test_settings_store_contains_no_oopz_credentials(tmp_path) -> None:
         hotkey="Ctrl+Enter",
         position_x=0.74,
         position_y=0.66,
-        always_visible=False,
         font_size=18,
         visibility_hotkey="Ctrl+F9",
         text_opacity=72,
         backdrop_opacity=38,
+        notification_sound="Windows Notify.wav",
     )
 
     store.save(settings)
@@ -46,6 +46,7 @@ def test_settings_store_contains_no_oopz_credentials(tmp_path) -> None:
     loaded = store.load()
     assert loaded.area_id == "area"
     assert loaded.channel_id == "channel"
+    assert loaded.notification_sound == "Windows Notify.wav"
     assert not loaded.has_credentials
 
 
@@ -68,7 +69,7 @@ def test_legacy_settings_ignore_removed_process_and_numeric_position(tmp_path) -
 
     loaded = JsonSettingsStore(path, ReversingProtector()).load()
 
-    assert loaded.schema_version == 8
+    assert loaded.schema_version == 9
     assert not hasattr(loaded, "target_process")
     assert loaded.jwt_token == ""
     assert loaded.area_id == "removed"
@@ -76,7 +77,6 @@ def test_legacy_settings_ignore_removed_process_and_numeric_position(tmp_path) -
     assert loaded.hotkey == "F8"
     assert loaded.position_x == 0.5
     assert loaded.position_y == 0.82
-    assert loaded.always_visible is True
 
 
 def test_existing_hotkey_is_preserved_while_new_default_is_f8(tmp_path) -> None:
@@ -87,12 +87,13 @@ def test_existing_hotkey_is_preserved_while_new_default_is_f8(tmp_path) -> None:
 
     loaded = JsonSettingsStore(path, ReversingProtector()).load()
 
-    assert loaded.schema_version == 8
+    assert loaded.schema_version == 9
     assert loaded.hotkey == "Enter"
     assert loaded.visibility_hotkey == "F9"
     assert loaded.font_size == 12
     assert loaded.text_opacity == 100
     assert loaded.backdrop_opacity == 32
+    assert loaded.notification_sound == ""
     assert AppSettings().hotkey == "F8"
 
 

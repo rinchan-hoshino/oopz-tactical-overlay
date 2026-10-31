@@ -1,0 +1,5 @@
+{
+  "commit": "55f7cd08c0ba744535fed96a28bb95e7bc493498",
+  "version": "0.12.0",
+  "note": "Executed legacy settings store, updater and build manifest assignment; synthetic executable bytes; DPAPI plaintext only."
+}

@@ -229,11 +229,28 @@ def run_update_helper(arguments: list[str]) -> int:
         _record_update_error(pending_path, 21, "download verification failed")
         _launch_target(target)
         return 21
-    if not _replace_with_retry(source, target):
+    # os.replace cannot cross Windows volumes. Stage a verified copy next to
+    # the installed executable, then replace it atomically on that volume.
+    replaced = False
+    try:
+        with tempfile.TemporaryDirectory(
+            prefix=".zhitiao-update-", dir=target.parent
+        ) as directory:
+            staged = Path(directory) / target.name
+            shutil.copyfile(source, staged)
+            if _verify_file(staged, expected_sha, expected_size):
+                replaced = _replace_with_retry(staged, target)
+    except OSError:
+        pass
+    if not replaced:
         pending_path.unlink(missing_ok=True)
-        _record_update_error(pending_path, 22, "target executable remained locked")
+        _record_update_error(pending_path, 22, "could not verify or replace executable")
         _launch_target(target)
         return 22
+    try:
+        source.unlink(missing_ok=True)
+    except OSError:
+        pass
     pending_path.unlink(missing_ok=True)
     error_path.unlink(missing_ok=True)
     _launch_target(target)
@@ -286,6 +303,27 @@ def start_pending_update(state_root: Path, current_version: str) -> bool:
 
 
 def cleanup_updater_later(path: Path) -> None:
+    # The new process also runs this after upgrades made by older helpers.
+    # Notify Explorer about the replaced file without clearing its global cache.
+    if os.name == "nt":
+        import ctypes
+        from ctypes import wintypes
+
+        notify = ctypes.windll.shell32.SHChangeNotify
+        notify.argtypes = [
+            wintypes.LONG,
+            wintypes.UINT,
+            ctypes.c_void_p,
+            ctypes.c_void_p,
+        ]
+        notify.restype = None
+        notify(
+            0x00002000,
+            0x0005 | 0x3000,
+            ctypes.c_wchar_p(str(_running_executable())),
+            None,
+        )
+
     def remove() -> None:
         for _attempt in range(20):
             try:
@@ -295,3 +333,24 @@ def cleanup_updater_later(path: Path) -> None:
                 time.sleep(0.25)
 
     threading.Thread(target=remove, name="updater-cleanup", daemon=True).start()
+
+
+def handle_update_arguments(arguments: list[str]) -> int | None:
+    """Process the legacy helper protocol before creating any UI or instance lock."""
+    if '--apply-update' in arguments:
+        index = arguments.index('--apply-update')
+        values = arguments[index + 1:index + 7]
+        if len(values) != 6:
+            return 2
+        try:
+            int(values[2])
+            int(values[5])
+        except ValueError:
+            return 2
+        return run_update_helper(values)
+    if '--cleanup-updater' in arguments:
+        index = arguments.index('--cleanup-updater')
+        if index + 1 == len(arguments):
+            return 2
+        cleanup_updater_later(Path(arguments[index + 1]))
+    return None

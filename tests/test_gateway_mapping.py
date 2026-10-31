@@ -2,7 +2,7 @@ from types import SimpleNamespace
 
 from oopz_sdk.models.message import Message
 
-from oopz_overlay.gateway_mapping import (
+from oopz_overlay.adapters.oopz import (
     choose_current_area,
     map_message,
     merge_area_payloads,

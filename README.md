@@ -1,59 +1,24 @@
-# Oopz 文字上屏
+# 纸条 TypeSlip
 
-Windows 游戏文字 HUD。它通过社区维护的 `oopz-sdk` 收发用户手动选择的 Oopz 文字频道消息。
+纸条是 Windows 10/11 的 Oopz 游戏聊天浮层：在窗口化或无边框游戏里看一个文字频道，按键打字，发送后回到游戏。使用本机 Oopz 登录态和社区维护的 [oopz-sdk](https://github.com/tangqingfeng7/Oopzbot-SDK)，不保存登录凭据，不注入游戏。
 
-下载：<https://acv.k-neco.com/tools/oopz-tactical-overlay/OopzTacticalOverlay.exe>
+[下载纸条 1.0.0](https://acv.k-neco.com/tools/oopz-tactical-overlay/OopzTacticalOverlay.exe) · 已有用户可从原启动入口自动升级，设置保持不变。
 
-## 使用
+1. 打开并登录 Oopz，加入服务器的语音频道，然后启动纸条。
+2. 按 `F8` 在 HUD 里选一个文字频道；输入时按 `Tab` 或输入 `#` 换频道。
+3. 输入消息后按 `Enter` 发送，或按 `Esc` 取消，自动回到游戏；托盘右键打开设置。
 
-1. 打开并登录 Oopz，加入对应服务器的语音频道。
-2. 启动 `OopzTacticalOverlay.exe`。
-3. 在设置页读取服务器，并手动选择 HUD 使用的文字频道。
-4. 按输入快捷键（默认 `F8`），输入内容后按 `Enter` 发送；`Esc` 取消，结束后自动回到原游戏窗口。
-5. 按显示快捷键（默认 `F9`）切换 HUD 显示。
+| 操作 | 快捷键 / 手势 |
+| --- | --- |
+| 输入消息 | `F8`（可改） |
+| 显示 / 隐藏 HUD | `F9`（可改），或托盘左键 |
+| 发送 / 取消 | `Enter` / `Esc` |
+| 选择频道 | 输入状态下 `Tab` 或 `#`，方向键 + `Enter` |
+| 翻看历史 / 改字号 | 输入状态下滚轮 / `Ctrl` + 滚轮 |
+| 移动 / 缩放 | 输入状态下拖消息区 / 右下角，松手保存，拖动中 `Esc` 撤销 |
 
-频道只在设置页手动切换，不再读取 Oopz 窗口或自动跟随。消息历史、实时消息和发送均由 SDK 完成。
+平时鼠标穿透、不抢焦点，旧消息十秒后渐淡；断线自动重连补消息。发送失败不自动重发，草稿只在当前进程中按账号和频道保留。提示音默认关闭，只响别人新发的消息。重复启动打开设置；设置随系统明暗，HUD 始终深底浅字。Windows 拒绝切换焦点时会提示，不强制抢占游戏窗口。
 
-## 设置
+开发：`python -m pip install -e '.[dev]'`，`QT_QPA_PLATFORM=offscreen pytest`。截图：`PYTHONPATH=src python tests/tools/render_ui.py`。Windows 构建：`python tools/build/build_windows.py`。更新兼容、迁移取舍与发行门槛见 [发行说明](docs/releasing.md)。
 
-- 点击快捷键框后，直接按下新的组合键。
-- 字号使用数字输入。
-- 文本透明度和 HUD 背景透明度分别调节。
-- 点击“编辑 HUD 位置与大小”进入编辑模式；只有点击“完成”才保存，点击“取消”恢复原位置和大小。
-- 激活输入时可用鼠标滚轮查看较早消息；退出输入后自动回到最新消息。
-- 实时新消息会短暂高亮；单条消息发送失败不会断开当前频道。
-
-## 通信边界
-
-- 从本机 Oopz 登录态临时读取 SDK 所需凭据，不写入工具设置或日志。
-- 通过 [`oopz-sdk`](https://github.com/tangqingfeng7/Oopzbot-SDK) 的 REST 与 WebSocket 收发消息。
-- 工具只保存手动选择的服务器和频道 ID，不保存 Oopz 凭据。
-- 不使用 Windows UI Automation、窗口文本抓取或模拟输入发送。
-- Oopz 退出登录或 SDK 登录态失效后，HUD 会断开并停止收发。
-
-`oopz-sdk` 是社区维护的非官方早期项目；自动更新只用于检查本工具的新版本。
-
-## 兼容性
-
-- 仅支持 Windows 和无独占全屏限制的游戏显示模式。
-- 不注入 Oopz 或游戏进程，也不读取进程内存。
-- 这是社区工具，不是 Oopz 官方插件；Oopz 界面或非官方 SDK 更新后可能需要适配。
-
-更新清单：<https://acv.k-neco.com/tools/oopz-tactical-overlay/latest.json>
-
-## 开发
-
-```bash
-uv sync --extra dev
-uv run pytest -q
-```
-
-Windows 构建：
-
-```bash
-uv run python tools/build_windows.py
-```
-
-## 许可证
-
-MIT © 2026 RinChan，见 [`LICENSE`](LICENSE)。
+MIT © 2026 RinChan，见 [LICENSE](LICENSE)。

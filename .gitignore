@@ -1,9 +1,11 @@
 .venv/
 __pycache__/
 .pytest_cache/
-build/
+/build/
 dist/
 release/
+artifacts/
+.ruff_cache/
 *.spec
 *.py[cod]
 *.log

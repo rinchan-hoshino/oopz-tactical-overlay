@@ -1,13 +1,15 @@
 from __future__ import annotations
 
 import hashlib
+import errno
 import io
 import json
+from pathlib import Path
 
 import pytest
 
-from oopz_overlay import updater
-from oopz_overlay.updater import (
+from oopz_overlay.adapters import updater
+from oopz_overlay.adapters.updater import (
     UpdateManifest,
     _replace_with_retry,
     download_verified,
@@ -204,3 +206,53 @@ def test_failed_helper_recovers_old_app_and_records_visible_error(
     assert not source.exists()
     assert json.loads((tmp_path / "update-error.json").read_text())["code"] == 21
     assert launched == [[str(target), "--cleanup-updater", str(helper)]]
+
+
+@pytest.mark.parametrize("corrupt_copy", [False, True])
+def test_helper_stages_and_verifies_on_install_volume_before_replacement(
+    tmp_path, monkeypatch, corrupt_copy
+) -> None:
+    download = tmp_path / "C" / "download.exe"
+    target = tmp_path / "D" / "installed.exe"
+    download.parent.mkdir()
+    target.parent.mkdir()
+    payload = b"verified new version"
+    download.write_bytes(payload)
+    target.write_bytes(b"working old version")
+    pending = download.parent / "pending-update.json"
+    pending.write_text("{}")
+    launched = []
+    real_replace = updater.os.replace
+    real_copy = updater.shutil.copyfile
+
+    def replace_on_same_volume(source, destination):
+        if not Path(source).is_relative_to(target.parent):
+            raise OSError(errno.EXDEV, "different Windows volumes")
+        assert Path(source).read_bytes() == payload
+        assert target.read_bytes() == b"working old version"
+        real_replace(source, destination)
+
+    def copy(source, destination):
+        real_copy(source, destination)
+        if corrupt_copy:
+            Path(destination).write_bytes(b"incomplete copy")
+
+    monkeypatch.setattr(updater.os, "replace", replace_on_same_volume)
+    monkeypatch.setattr(updater.shutil, "copyfile", copy)
+    monkeypatch.setattr(updater, "_wait_for_process", lambda _pid: None)
+    monkeypatch.setattr(updater, "_launch_target", launched.append)
+    result = run_update_helper(
+        [
+            str(target),
+            str(download),
+            "0",
+            str(pending),
+            hashlib.sha256(payload).hexdigest(),
+            str(len(payload)),
+        ]
+    )
+    assert result == (22 if corrupt_copy else 0)
+    assert target.read_bytes() == (b"working old version" if corrupt_copy else payload)
+    assert not pending.exists()
+    assert not list(target.parent.glob(".zhitiao-update-*"))
+    assert launched == [target]

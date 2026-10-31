@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import math
 from dataclasses import asdict, dataclass, field, fields
 from pathlib import Path
 from typing import Protocol
@@ -9,7 +10,7 @@ from typing import Protocol
 
 @dataclass(frozen=True, slots=True)
 class AppSettings:
-    schema_version: int = 8
+    schema_version: int = 9
     device_id: str = field(default="", metadata={"persist": False})
     person_uid: str = field(default="", metadata={"persist": False})
     jwt_token: str = field(default="", metadata={"persist": False})
@@ -18,16 +19,18 @@ class AppSettings:
     area_name: str = ""
     channel_id: str = ""
     channel_name: str = ""
+    screen_name: str = ""
     hotkey: str = "F8"
     visibility_hotkey: str = "F9"
     position_x: float = 0.5
     position_y: float = 0.82
     overlay_width: int = 0
     overlay_height: int = 0
-    always_visible: bool = True
+    strength: int = 50
     font_size: int = 12
     text_opacity: int = 100
     backdrop_opacity: int = 32
+    notification_sound: str = ""
 
     @classmethod
     def from_dict(cls, raw: dict[str, object]) -> AppSettings:
@@ -35,13 +38,24 @@ class AppSettings:
             item.name for item in fields(cls) if item.metadata.get("persist", True)
         }
         data = {key: value for key, value in raw.items() if key in known}
-        data["schema_version"] = 8
+        for key in (
+            "area_id",
+            "area_name",
+            "channel_id",
+            "channel_name",
+            "screen_name",
+            "hotkey",
+            "visibility_hotkey",
+            "notification_sound",
+        ):
+            if key in data and not isinstance(data[key], str):
+                raise ValueError(f"invalid setting: {key}")
+        data["schema_version"] = 9
+        data["strength"] = max(0, min(100, int(data.get("strength", 50))))
         if "position_x" not in data:
             data["position_x"] = 0.5
         if "position_y" not in data:
             data["position_y"] = 0.82
-        if "always_visible" not in data or "position_x" not in raw:
-            data["always_visible"] = True
         data["font_size"] = max(9, min(20, int(data.get("font_size", 12))))
         data["text_opacity"] = max(
             20,
@@ -51,7 +65,19 @@ class AppSettings:
             0,
             min(85, int(data.get("backdrop_opacity", 32))),
         )
+        for key, fallback in (("position_x", 0.5), ("position_y", 0.82)):
+            value = float(data.get(key, fallback))
+            data[key] = max(0.0, min(1.0, value)) if math.isfinite(value) else fallback
+        for key in ("overlay_width", "overlay_height"):
+            data[key] = max(0, min(16000, int(data.get(key, 0))))
         return cls(**data)
+
+    @property
+    def opacity(self) -> tuple[int, int]:
+        # Keep both schema-8 values as a migration anchor; the one slider moves both.
+        delta = self.strength - 50
+        return (max(0, min(85, self.backdrop_opacity + delta)),
+                max(20, min(100, self.text_opacity + round(delta * .8))))
 
     @property
     def has_credentials(self) -> bool:

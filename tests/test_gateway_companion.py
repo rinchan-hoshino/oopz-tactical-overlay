@@ -1,5 +1,5 @@
-from oopz_overlay.gateway import Destination, GatewayRuntime
-from oopz_overlay.settings import AppSettings
+from oopz_overlay.adapters.oopz import Destination, GatewayRuntime
+from oopz_overlay.core.settings import AppSettings
 
 
 def test_sdk_configuration_uses_the_local_oopz_session() -> None:

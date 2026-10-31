@@ -1,9 +1,8 @@
 import pytest
 
-from oopz_overlay.win32_input import (
+from oopz_overlay.adapters.win32 import (
     HOTKEY_ACTIVATE_ID,
     HOTKEY_VISIBILITY_ID,
-    HWND_TOPMOST,
     MOD_CONTROL,
     MOD_NOREPEAT,
     VK_RETURN,
@@ -76,7 +75,7 @@ def test_global_wheel_hook_only_consumes_vertical_wheel_while_enabled() -> None:
     assert received == [120, -120]
 
 
-def test_focus_window_reasserts_topmost_and_forces_one_retry() -> None:
+def test_denied_focus_does_not_force_alt_tab_or_change_window_placement() -> None:
     class User32:
         def __init__(self) -> None:
             self.foreground = 900
@@ -124,9 +123,10 @@ def test_focus_window_reasserts_topmost_and_forces_one_retry() -> None:
 
     user32 = User32()
 
-    assert _focus_window_native(user32, Kernel32(), 100, 101)
-    assert user32.topmost_target == (100, HWND_TOPMOST)
-    assert user32.foreground == 100
+    assert not _focus_window_native(user32, Kernel32(), 100, 101)
+    assert user32.topmost_target is None
+    assert user32.foreground == 900
+    assert not user32.switched
 
 
 def test_restore_window_returns_to_previous_foreground_without_making_it_topmost() -> (

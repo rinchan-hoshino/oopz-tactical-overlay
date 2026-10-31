@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 from types import SimpleNamespace
 
-from oopz_overlay.gateway import GatewayRuntime
+from oopz_overlay.adapters.oopz import GatewayRuntime
 
 
 class FakePersonService:
