@@ -112,3 +112,46 @@ def test_visibility_hotkey_can_show_messages_when_continuous_display_is_off(cont
     assert not c.hud.isVisible()
     c.action('toggle')
     assert c.hud.isVisible()
+
+
+@pytest.mark.parametrize('selected', [False, True])
+def test_activation_hotkey_toggles_and_returns_to_original_window(controller, monkeypatch, selected):
+    c = controller
+    c.state = replace(c.state, settings=AppSettings(channel_id='c' if selected else ''))
+    foreground = [900]
+    restored = []
+    monkeypatch.setattr(module.win32, 'foreground_window', lambda: foreground[0])
+    monkeypatch.setattr(module.win32, 'focus_window', lambda *args: True)
+    monkeypatch.setattr(module.win32, 'restore_window', lambda handle, **kwargs: restored.append(handle))
+    c.action('activate')
+    assert c.state.mode == ('input' if selected else 'picker')
+    c.action('draft', 'keep draft')
+    foreground[0] = int(c.hud.winId())
+    c.action('activate')
+    assert c.state.mode == 'passive'
+    assert c.state.draft == 'keep draft'
+    assert restored == [900]
+
+
+def test_blur_does_not_restore_focus_to_game(controller, monkeypatch):
+    c = controller
+    monkeypatch.setattr(module.win32, 'foreground_window', lambda: 900)
+    restored = []
+    monkeypatch.setattr(module.win32, 'restore_window', lambda *args, **kwargs: restored.append(args))
+    c.action('activate')
+    c.action('blur')
+    assert c.state.mode == 'passive' and restored == []
+
+
+def test_f9_exits_input_restores_focus_and_preserves_draft(controller, monkeypatch):
+    c = controller
+    c.state = replace(c.state, mode='input', settings=AppSettings(channel_id='c'))
+    c._return_window = 900
+    restored = []
+    monkeypatch.setattr(module.win32, 'restore_window', lambda handle, **kwargs: restored.append(handle))
+    c.action('draft', 'keep')
+    c.action('toggle')
+    assert c.state.mode == 'passive' and not c.hud.isVisible()
+    assert c.state.draft == 'keep' and restored == [900]
+    c.action('toggle')
+    assert c.hud.isVisible() and c.state.mode == 'passive'

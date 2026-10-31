@@ -6,9 +6,9 @@ import os
 from ctypes import wintypes
 from datetime import datetime
 from time import monotonic
-from PySide6.QtCore import Qt, Signal, QTimer, QEvent, QPoint, QPointF
+from PySide6.QtCore import Qt, Signal, QTimer, QEvent, QPoint, QPointF, Property, QPropertyAnimation, QEasingCurve
 from PySide6.QtGui import QColor, QPainter, QTextDocument, QFont, QPen, QTextCursor, QTextCharFormat, QImage, QRadialGradient, QLinearGradient
-from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QListWidget, QPushButton
+from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QListWidget, QPushButton, QScrollBar
 from ..core.state import AppState
 from ..core.timeline import Timeline, ChatMessage
 from ..i18n import tr
@@ -28,6 +28,8 @@ def sample_timeline():
 
 
 class Messages(QWidget):
+    browsing_changed = Signal(bool)
+    scroll_changed = Signal(int, int)
 
     def __init__(self, parent):
         super().__init__(parent)
@@ -35,6 +37,16 @@ class Messages(QWidget):
         self.state = AppState()
         self.offset = 0
         self.maximum_offset = 0
+        self._items = ()
+        self._anchor = None
+        self._browsing = False
+        self._scroll_metrics = (0, 0)
+
+    def _set_scroll_offset(self, value):
+        self.offset = value
+        self.update()
+
+    scroll_offset = Property(int, lambda self: self.offset, _set_scroll_offset)
 
     def paintEvent(self, event):
         painter = QPainter(self)
@@ -46,7 +58,8 @@ class Messages(QWidget):
         width = max(1, self.width())
         now = monotonic()
         temporary = self.state.mode == 'passive' and not self.state.settings.always_visible
-        for message in self.timeline.items:
+        items = self.timeline.items
+        for message in items:
             alpha = self.timeline.opacity(message.message_id, now=now) if temporary else 1
             if not alpha:
                 continue
@@ -60,10 +73,10 @@ class Messages(QWidget):
             doc = QTextDocument()
             doc.setDefaultFont(font)
             doc.setDocumentMargin(0)
-            doc.setTextWidth(max(1, width - 12))
+            doc.setTextWidth(max(1, width - 24))
             text = html.escape(message.text).replace('\n', '<br>')
             doc.setHtml(f'<span style="color:#c0c6d0">{timestamp}</span><span style="color:{color}">{html.escape(message.sender_name)}:</span><span style="color:#ffffff"> {text}</span>')
-            rows.append((alpha, doc, doc.size().height() + 7))
+            rows.append((alpha, doc, doc.size().height() + 7, message.message_id))
         if rows and self.state.mode == 'passive' and self.state.settings.backdrop_opacity:
             # One feathered vignette; every edge dissolves into the game scene.
             backdrop = QImage(self.size(), QImage.Format.Format_ARGB32_Premultiplied)
@@ -85,10 +98,22 @@ class Messages(QWidget):
             painter.drawImage(0, 0, backdrop)
         total = sum((row[2] for row in rows))
         self.maximum_offset = max(0, int(total - self.height()))
+        if self.offset and items != self._items and self._anchor:
+            anchor_id, anchor_y = self._anchor
+            y = self.height() - total
+            for _, _, height, message_id in rows:
+                if message_id == anchor_id:
+                    self.offset = max(0, round(anchor_y - y))
+                    break
+                y += height
+        self._items = items
         self.offset = min(self.offset, self.maximum_offset)
         y = self.height() - total + self.offset
-        for alpha, doc, height in rows:
+        self._anchor = None
+        for alpha, doc, height, message_id in rows:
             if y + height >= 0 and y < self.height():
+                if self._anchor is None:
+                    self._anchor = (message_id, y)
                 painter.save()
                 painter.translate(6, y + 3)
                 opacity = self.state.settings.opacity[1] / 100
@@ -114,6 +139,14 @@ class Messages(QWidget):
                 doc.drawContents(painter)
                 painter.restore()
             y += height
+        browsing = self.offset > 0
+        if browsing != self._browsing:
+            self._browsing = browsing
+            self.browsing_changed.emit(browsing)
+        metrics = (self.offset, self.maximum_offset)
+        if metrics != self._scroll_metrics:
+            self._scroll_metrics = metrics
+            self.scroll_changed.emit(*metrics)
 
 class Hud(QWidget):
     action = Signal(str, object)
@@ -128,6 +161,7 @@ class Hud(QWidget):
         self.resize(360, 165)
         self.state = AppState()
         self._drag = None
+        self._composing = False
         self._destinations = ()
         layout = QVBoxLayout(self)
         layout.setContentsMargins(12, 9, 12, 9)
@@ -138,9 +172,19 @@ class Hud(QWidget):
         self.hint.setWordWrap(True)
         self.hint.setStyleSheet('color:#e5e7eb;background:rgba(16,19,24,217);padding:4px;')
         layout.addWidget(self.hint)
-        self.latest = QPushButton(tr('latest'), self)
-        layout.addWidget(self.latest, 0, Qt.AlignmentFlag.AlignRight)
+        self.latest = QPushButton(tr('latest'), self.messages)
+        self.latest.setStyleSheet('color:#e5e7eb;background:#252b35;padding:4px 8px;border-radius:4px;')
+        self.latest.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.latest.clicked.connect(self.to_latest)
+        self.messages.browsing_changed.connect(self.latest.setVisible)
+        self.scrollbar = QScrollBar(Qt.Orientation.Vertical, self.messages)
+        self.scrollbar.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.scrollbar.setStyleSheet('QScrollBar:vertical {background:transparent;width:8px;} QScrollBar::handle:vertical {background:#687382;border-radius:4px;min-height:16px;} QScrollBar::add-line:vertical,QScrollBar::sub-line:vertical {height:0;} QScrollBar::add-page:vertical,QScrollBar::sub-page:vertical {background:transparent;}')
+        self.scrollbar.valueChanged.connect(self._scroll_to)
+        self.messages.scroll_changed.connect(self._sync_scrollbar)
+        self._scroll = QPropertyAnimation(self.messages, b'scroll_offset', self)
+        self._scroll.setDuration(130)
+        self._scroll.setEasingCurve(QEasingCurve.Type.OutCubic)
         self.picker = QListWidget(self)
         layout.addWidget(self.picker, 1)
         self.picker.itemActivated.connect(self._choose)
@@ -174,6 +218,9 @@ class Hud(QWidget):
 
     def render(self, state: AppState, timeline: Timeline, destinations):
         previous = self.state.mode
+        if self.messages.offset and timeline.items != self.messages._items:
+            # Keep the last painted reading anchor when incoming traffic changes rows.
+            self._scroll.stop()
         self.state = state
         self.messages.state = state
         self.messages.timeline = timeline
@@ -213,8 +260,16 @@ class Hud(QWidget):
         self.hint.setText(hint)
         self.hint.setVisible(bool(hint))
         if not active:
+            self._scroll.stop()
+            if self._drag:
+                self.setGeometry(self._drag[1])
+                self._drag = None
             self.messages.offset = 0
+        if state.mode != 'input':
+            self._composing = False
+            self.input.clearFocus()
         self.latest.setVisible(active and (not picker) and (self.messages.offset > 0))
+        self._sync_scrollbar(self.messages.offset, self.messages.maximum_offset)
         self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, not active)
         self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating, not active)
         if self.isWindow() and self.isVisible():
@@ -230,26 +285,65 @@ class Hud(QWidget):
             self.action.emit('channel', self._destinations[row])
 
     def to_latest(self):
+        self._scroll.stop()
         self.messages.offset = 0
         self.latest.hide()
         self.messages.update()
+        if self.state.mode == 'input':
+            self.input.setFocus(Qt.FocusReason.MouseFocusReason)
+
+    def _sync_scrollbar(self, offset, maximum):
+        self.scrollbar.blockSignals(True)
+        self.scrollbar.setRange(0, maximum)
+        self.scrollbar.setPageStep(self.messages.height())
+        self.scrollbar.setValue(maximum - offset)
+        self.scrollbar.blockSignals(False)
+        self.scrollbar.setVisible(self.state.mode in {'input', 'adjust'} and maximum > 0)
+
+    def _scroll_to(self, value):
+        self._scroll.stop()
+        self.messages.offset = self.messages.maximum_offset - value
+        self.messages.update()
 
     def handle_wheel(self, delta, control=False):
-        if self.state.mode == 'passive':
+        if self.state.mode == 'passive' or not delta:
             return
         if control:
             self.action.emit('font_size', max(9, min(20, self.state.settings.font_size + (1 if delta > 0 else -1))))
         elif self.state.mode == 'picker':
             self.picker.setCurrentRow(max(0, min(self.picker.count() - 1, self.picker.currentRow() + (-1 if delta > 0 else 1))))
         else:
-            self.messages.offset = max(0, min(self.messages.maximum_offset, self.messages.offset + int(delta / 120) * 48))
-            self.latest.setVisible(self.messages.offset > 0)
-            self.messages.update()
+            base = self._scroll.endValue() if self._scroll.state() == QPropertyAnimation.State.Running else self.messages.offset
+            distance = round(delta / 120 * 48) or (1 if delta > 0 else -1)
+            target = max(0, min(self.messages.maximum_offset, base + distance))
+            self._scroll.stop()
+            self._scroll.setStartValue(self.messages.offset)
+            self._scroll.setEndValue(target)
+            self._scroll.start()
 
     def eventFilter(self, obj, event):
         kind = event.type()
+        if obj is self.messages and kind == QEvent.Type.Resize:
+            self.latest.adjustSize()
+            self.latest.move(max(0, self.messages.width() - self.latest.width() - 12),
+                             max(0, self.messages.height() - self.latest.height() - 4))
+            self.scrollbar.setGeometry(max(0, self.messages.width() - 8), 0, 8, self.messages.height())
+        if obj is self.input and kind == QEvent.Type.InputMethod:
+            self._composing = bool(event.preeditString())
         if kind == QEvent.Type.KeyPress and self.state.mode != 'passive':
+            if self._composing:
+                return False
             key = event.key()
+            if obj is self.messages:
+                if key in (Qt.Key.Key_Home, Qt.Key.Key_End):
+                    self._scroll_to(0 if key == Qt.Key.Key_Home else self.messages.maximum_offset)
+                    return True
+                steps = {Qt.Key.Key_Up: 120, Qt.Key.Key_Down: -120,
+                         Qt.Key.Key_PageUp: self.messages.height() / 48 * 120,
+                         Qt.Key.Key_PageDown: -self.messages.height() / 48 * 120}
+                if key in steps:
+                    self.handle_wheel(steps[key])
+                    return True
             if key == Qt.Key.Key_Escape:
                 if self._drag:
                     self.setGeometry(self._drag[1])
@@ -266,6 +360,8 @@ class Hud(QWidget):
             if obj is self.input and key in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
                 if self.input.text().strip():
                     self.action.emit('send', self.input.text())
+                else:
+                    self.action.emit('cancel', None)
                 return True
         if kind == QEvent.Type.Wheel and self.state.mode != 'passive':
             self.handle_wheel(event.angleDelta().y(), bool(event.modifiers() & Qt.KeyboardModifier.ControlModifier))

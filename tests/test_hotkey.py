@@ -199,3 +199,52 @@ def test_parse_hotkey_normalizes_letters_and_rejects_ambiguous_sequences() -> No
 
     with pytest.raises(ValueError, match="支持"):
         parse_hotkey("Ctrl+BrowserBack")
+
+
+def test_conflicting_hotkey_rolls_back_and_recording_releases_both():
+    class User32:
+        def __init__(self):
+            self.keys = {}
+        def RegisterHotKey(self, window, identifier, modifiers, key):
+            if key == 0x79:
+                return 0
+            self.keys[identifier] = key
+            return 1
+        def UnregisterHotKey(self, window, identifier):
+            self.keys.pop(identifier, None)
+            return 1
+    api = User32()
+    registration = GlobalHotkeyRegistration(1, user32=api)
+    registration.configure('F8', 'F9')
+    with pytest.raises(OSError):
+        registration.configure('F8', 'F10')
+    assert api.keys == {HOTKEY_ACTIVATE_ID: 0x77, HOTKEY_VISIBILITY_ID: 0x78}
+    registration.set_paused(True)
+    assert api.keys == {}
+    registration.set_paused(False)
+    assert api.keys == {HOTKEY_ACTIVATE_ID: 0x77, HOTKEY_VISIBILITY_ID: 0x78}
+    with pytest.raises(ValueError):
+        registration.configure('F8', 'F8')
+    registration.close()
+    assert api.keys == {}
+
+
+def test_wheel_and_focus_return_do_not_steal_from_another_foreground():
+    class User32:
+        foreground = 123
+        def GetForegroundWindow(self):
+            return self.foreground
+        def IsWindow(self, window):
+            return True
+        def SetForegroundWindow(self, window):
+            pytest.fail('must not steal focus from another application')
+    api = User32()
+    received = []
+    wheel = GlobalWheelRegistration(received.append, user32=api, install=False, window_id=123)
+    wheel.set_enabled(True)
+    assert wheel.dispatch(0x20A, 120 << 16)
+    api.foreground = 456
+    assert not wheel.dispatch(0x20A, 120 << 16)
+    assert received == [120]
+    assert not _restore_window_native(api, None, 789, expected_foreground=123)
+    wheel.close()
