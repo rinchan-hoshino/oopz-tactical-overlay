@@ -47,9 +47,5 @@ class Timeline:
             self.unread += len(notify)
         return tuple(notify)
 
-    def brightness(self, message_id: str, *, now: float) -> float:
-        age = now - self._arrivals.get(message_id, now - 12)
-        return max(0.28, 1 - max(0, age - 10) * 0.36)
-
     def mark_read(self) -> None:
         self.unread = 0

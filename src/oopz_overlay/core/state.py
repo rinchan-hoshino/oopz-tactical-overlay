@@ -26,7 +26,8 @@ def reduce(state: AppState, action: str, value=None, *, generation=None) -> AppS
     if generation is not None and generation != state.generation:
         return state
     if action == 'settings':
-        return replace(state, settings=value)
+        visible = value.always_visible if state.connected and state.mode == 'passive' and value.always_visible != state.settings.always_visible else state.visible
+        return replace(state, settings=value, visible=visible)
     if action == 'activate':
         return replace(state, visible=True, mode='input' if state.settings.channel_id else 'picker')
     if action == 'picker':
@@ -34,20 +35,23 @@ def reduce(state: AppState, action: str, value=None, *, generation=None) -> AppS
     if action == 'input':
         return replace(state, mode='input')
     if action == 'cancel':
-        return replace(state, mode='passive')
+        return replace(state, mode='passive', visible=state.visible and (state.settings.always_visible or not state.connected))
     if action == 'toggle':
         return replace(state, visible=not state.visible, mode='passive')
     if action == 'draft':
         return replace(state, drafts={**state.drafts, state.key: value})
     if action == 'submit':
-        return replace(state, mode='passive', drafts={**state.drafts, state.key: ''})
+        return replace(state, mode='passive', visible=state.visible and (state.settings.always_visible or not state.connected), drafts={**state.drafts, state.key: ''})
     if action == 'send_failed':
         key, text = value
         previous = state.drafts.get(key, '')
         draft = '\n'.join((part for part in (previous, text) if part))
         return replace(state, drafts={**state.drafts, key: draft})
     if action == 'connected':
-        return replace(state, connected=value, status='connected' if value else 'reconnecting')
+        visible = state.visible
+        if value and not state.connected and state.mode == 'passive':
+            visible = visible and state.settings.always_visible
+        return replace(state, connected=value, visible=visible, status='connected' if value else 'reconnecting')
     if action == 'connection':
         return replace(state, connected=False, generation=value, status='connecting')
     if action == 'logout':

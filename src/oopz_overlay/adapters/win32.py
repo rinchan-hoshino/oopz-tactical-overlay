@@ -532,16 +532,28 @@ def _media_root() -> Path | None:
     return Path(os.environ.get("SystemRoot", r"C:\Windows")) / "Media"
 
 
+NOTIFICATION_SOUNDS = {
+    'Windows Navigation Start.wav': 'sound_tap',
+    'Windows Menu Command.wav': 'sound_tick',
+    'Windows Feed Discovered.wav': 'sound_drop',
+    'Windows Information Bar.wav': 'sound_soft',
+}
+
+
 def system_sounds() -> list[tuple[str, str]]:
     """Return display names and relative filenames, without bundling audio."""
     root = _media_root()
     if root is None:
         return []
     try:
-        files = sorted(root.rglob("*.wav"), key=lambda path: str(path).casefold())
+        from ..i18n import tr
+        preferred = list(NOTIFICATION_SOUNDS)
+        files = sorted(root.rglob("*.wav"), key=lambda path: (
+            preferred.index(path.name) if path.name in preferred and path.parent == root else len(preferred),
+            str(path).casefold()))
         return [
             (
-                str(path.relative_to(root).with_suffix("")),
+                tr(NOTIFICATION_SOUNDS[path.name]) if path.parent == root and path.name in NOTIFICATION_SOUNDS else str(path.relative_to(root).with_suffix("")),
                 path.relative_to(root).as_posix(),
             )
             for path in files

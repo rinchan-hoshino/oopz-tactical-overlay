@@ -7,13 +7,27 @@ from ctypes import wintypes
 from datetime import datetime
 from time import monotonic
 from PySide6.QtCore import Qt, Signal, QTimer, QEvent, QPoint
-from PySide6.QtGui import QColor, QPainter, QTextDocument, QFont
+from PySide6.QtGui import QColor, QPainter, QTextDocument, QFont, QPen, QTextCursor, QTextCharFormat
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QListWidget, QPushButton
 from ..core.state import AppState
-from ..core.timeline import Timeline
+from ..core.timeline import Timeline, ChatMessage
 from ..i18n import tr
 from ..adapters import win32
 COLORS = ('#a6c6df', '#c4b1dc', '#a8cbb7', '#dcc49e', '#d7abb4', '#a5ced1')
+
+OUTLINE = '#080b10'
+RIBBON = '#101318'
+RIBBON_ALPHA = 217
+
+
+def sample_timeline():
+    timeline = Timeline()
+    timeline.merge([ChatMessage(f'sample-{i}', 1775000000000000 + i * 1000000,
+                               str(i), ('队友 A', 'Mika', '队友 B')[i],
+                               tr(f'sample{i + 1}'), False) for i in range(3)],
+                   now=monotonic() - 2, live=True)
+    return timeline
+
 
 class Messages(QWidget):
 
@@ -42,10 +56,16 @@ class Messages(QWidget):
             doc = QTextDocument()
             doc.setDefaultFont(font)
             doc.setDocumentMargin(0)
-            doc.setTextWidth(width)
+            doc.setTextWidth(max(1, width - 12))
             text = html.escape(message.text).replace('\n', '<br>')
-            doc.setHtml(f'<span style="color:#9ca3af">{timestamp}</span><span style="color:{color}">{html.escape(message.sender_name)}</span><span style="color:#f0f1f3">  {text}</span>')
-            rows.append((message, doc, doc.size().height() + 7))
+            doc.setHtml(f'<span style="color:#c0c6d0">{timestamp}</span><span style="color:{color}">{html.escape(message.sender_name)}</span><span style="color:#f0f1f3">  {text}</span>')
+            cursor = QTextCursor(doc)
+            cursor.select(QTextCursor.SelectionType.Document)
+            outline = QTextCharFormat()
+            outline.setTextOutline(QPen(QColor(OUTLINE), 2, Qt.PenStyle.SolidLine,
+                                        Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin))
+            cursor.mergeCharFormat(outline)
+            rows.append((message, doc, doc.size().height() + 9))
         total = sum((row[2] for row in rows))
         self.maximum_offset = max(0, int(total - self.height()))
         self.offset = min(self.offset, self.maximum_offset)
@@ -53,12 +73,21 @@ class Messages(QWidget):
         for message, doc, height in rows:
             if y + height >= 0 and y < self.height():
                 painter.save()
-                painter.translate(0, y)
+                painter.translate(6, y + 3)
+                # A local ribbon keeps colored names readable even over a white game scene.
+                ribbon = QColor(RIBBON)
+                ribbon.setAlpha(RIBBON_ALPHA)
+                painter.fillRect(-5, -2, min(width, int(doc.idealWidth()) + 10), int(height) - 2, ribbon)
                 if self.timeline.highlighted(message.message_id, now=monotonic()):
-                    painter.fillRect(0, 0, width, int(height), QColor(190, 205, 220, 20))
+                    painter.fillRect(-5, -2, min(width, int(doc.idealWidth()) + 10), int(height) - 2, QColor(190, 205, 220, 20))
                 opacity = self.state.settings.opacity[1] / 100
-                if self.state.mode == 'passive':
-                    opacity *= self.timeline.brightness(message.message_id, now=monotonic())
+                # Qt outlines cover thin glyphs; repaint their fill separately.
+                doc.drawContents(painter)
+                cursor = QTextCursor(doc)
+                cursor.select(QTextCursor.SelectionType.Document)
+                fill = QTextCharFormat()
+                fill.setTextOutline(QPen(Qt.PenStyle.NoPen))
+                cursor.mergeCharFormat(fill)
                 painter.setOpacity(opacity)
                 doc.drawContents(painter)
                 painter.restore()
@@ -67,10 +96,12 @@ class Messages(QWidget):
 class Hud(QWidget):
     action = Signal(str, object)
 
-    def __init__(self):
-        super().__init__(None, Qt.WindowType.Tool | Qt.WindowType.FramelessWindowHint | Qt.WindowType.WindowStaysOnTopHint)
-        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
-        self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating)
+    def __init__(self, parent=None):
+        flags = Qt.WindowType.Widget if parent is not None else Qt.WindowType.Tool | Qt.WindowType.FramelessWindowHint | Qt.WindowType.WindowStaysOnTopHint
+        super().__init__(parent, flags)
+        if parent is None:
+            self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+            self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating)
         self.setMinimumSize(260, 135)
         self.resize(360, 165)
         self.state = AppState()
@@ -83,6 +114,7 @@ class Hud(QWidget):
         layout.addWidget(self.messages, 1)
         self.hint = QLabel(self)
         self.hint.setWordWrap(True)
+        self.hint.setStyleSheet('color:#e5e7eb;background:rgba(16,19,24,217);padding:4px;')
         layout.addWidget(self.hint)
         self.latest = QPushButton(tr('latest'), self)
         layout.addWidget(self.latest, 0, Qt.AlignmentFlag.AlignRight)
@@ -107,6 +139,7 @@ class Hud(QWidget):
         self.grip = QLabel('⌟', self)
         self.grip.setFixedSize(18, 18)
         self.grip.setCursor(Qt.CursorShape.SizeFDiagCursor)
+        self.messages.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self.messages.setCursor(Qt.CursorShape.SizeAllCursor)
         self.setStyleSheet('QLabel {color:#9ca3af;background:transparent;} QLineEdit {color:#f0f1f3;background:transparent;padding:3px 0;} QListWidget {color:#e5e7eb;background:transparent;border:0;outline:0;} QListWidget::item {padding:7px;} QListWidget::item:selected {background:#3e454f;} QPushButton {color:#b8c3d1;background:transparent;border:0;}')
         for child in (self.input, self.messages, self.grip, self.picker, self):
@@ -153,6 +186,8 @@ class Hud(QWidget):
             hint = tr('login' if state.status == 'login' else 'empty_channels')
         if state.status == 'starting':
             hint = tr('choose', hotkey=state.settings.hotkey)
+        if state.mode == 'adjust':
+            hint = tr('adjust_hint')
         self.hint.setText(hint)
         self.hint.setVisible(bool(hint))
         if not active:
@@ -160,10 +195,10 @@ class Hud(QWidget):
         self.latest.setVisible(active and (not picker) and (self.messages.offset > 0))
         self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, not active)
         self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating, not active)
-        if self.isVisible():
+        if self.isWindow() and self.isVisible():
             win32.set_window_click_through(int(self.winId()), not active)
         if active and previous != state.mode:
-            (self.picker if picker else self.input).setFocus()
+            (self.picker if picker else self.messages if state.mode == 'adjust' else self.input).setFocus()
         self.messages.update()
         self.update()
 
@@ -200,7 +235,7 @@ class Hud(QWidget):
                 else:
                     self.action.emit('cancel', None)
                 return True
-            if key == Qt.Key.Key_Tab:
+            if key == Qt.Key.Key_Tab and self.state.mode != 'adjust':
                 self.action.emit('picker', None)
                 return True
             if obj is self.input and event.text() == '#':
@@ -245,7 +280,8 @@ class Hud(QWidget):
 
     def showEvent(self, event):
         super().showEvent(event)
-        win32.set_window_click_through(int(self.winId()), self.state.mode == 'passive')
+        if self.isWindow():
+            win32.set_window_click_through(int(self.winId()), self.state.mode == 'passive')
 
     def nativeEvent(self, event_type, message):
         if os.name == 'nt':

@@ -10,7 +10,7 @@ from typing import Protocol
 
 @dataclass(frozen=True, slots=True)
 class AppSettings:
-    schema_version: int = 9
+    schema_version: int = 10
     device_id: str = field(default="", metadata={"persist": False})
     person_uid: str = field(default="", metadata={"persist": False})
     jwt_token: str = field(default="", metadata={"persist": False})
@@ -26,11 +26,11 @@ class AppSettings:
     position_y: float = 0.82
     overlay_width: int = 0
     overlay_height: int = 0
-    strength: int = 50
+    always_visible: bool = True
     font_size: int = 12
     text_opacity: int = 100
     backdrop_opacity: int = 32
-    notification_sound: str = ""
+    notification_sound: str = "Windows Navigation Start.wav"
 
     @classmethod
     def from_dict(cls, raw: dict[str, object]) -> AppSettings:
@@ -50,8 +50,14 @@ class AppSettings:
         ):
             if key in data and not isinstance(data[key], str):
                 raise ValueError(f"invalid setting: {key}")
-        data["schema_version"] = 9
-        data["strength"] = max(0, min(100, int(data.get("strength", 50))))
+        data["schema_version"] = 10
+        data.setdefault("notification_sound", "")
+        if "always_visible" in data and not isinstance(data["always_visible"], bool):
+            raise ValueError("invalid setting: always_visible")
+        # Fold 1.0's coupled slider into the effective values exactly once.
+        delta = 0
+        if raw.get("schema_version") == 9:
+            delta = max(0, min(100, int(raw.get("strength", 50)))) - 50
         if "position_x" not in data:
             data["position_x"] = 0.5
         if "position_y" not in data:
@@ -59,11 +65,11 @@ class AppSettings:
         data["font_size"] = max(9, min(20, int(data.get("font_size", 12))))
         data["text_opacity"] = max(
             20,
-            min(100, int(data.get("text_opacity", 100))),
+            min(100, int(data.get("text_opacity", 100)) + round(delta * .8)),
         )
         data["backdrop_opacity"] = max(
             0,
-            min(85, int(data.get("backdrop_opacity", 32))),
+            min(85, int(data.get("backdrop_opacity", 32)) + delta),
         )
         for key, fallback in (("position_x", 0.5), ("position_y", 0.82)):
             value = float(data.get(key, fallback))
@@ -74,10 +80,7 @@ class AppSettings:
 
     @property
     def opacity(self) -> tuple[int, int]:
-        # Keep both schema-8 values as a migration anchor; the one slider moves both.
-        delta = self.strength - 50
-        return (max(0, min(85, self.backdrop_opacity + delta)),
-                max(20, min(100, self.text_opacity + round(delta * .8))))
+        return self.backdrop_opacity, self.text_opacity
 
     @property
     def has_credentials(self) -> bool:

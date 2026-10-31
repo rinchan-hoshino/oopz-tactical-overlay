@@ -13,11 +13,11 @@ from PySide6.QtWidgets import QApplication
 from . import __version__
 from .core.settings import AppSettings, JsonSettingsStore
 from .core.state import AppState, reduce
-from .core.timeline import Timeline, ChatMessage
+from .core.timeline import Timeline
 from .adapters.oopz import GatewayRuntime, GatewayCallbacks
 from .adapters.session import WindowsDpapiProtector
 from .adapters import win32, updater
-from .ui.hud import Hud
+from .ui.hud import Hud, sample_timeline
 from .ui.settings_window import SettingsWindow
 from .ui.tray import Tray, app_icon
 from .i18n import tr
@@ -120,8 +120,7 @@ class AppController(QObject):
         self.tray.quit_requested.connect(self.shutdown)
         self.tray.show()
         self._place()
-        self._sample = Timeline()
-        self._sample.merge([ChatMessage(f'sample-{i}', 1775000000000000 + i * 1000000, str(i), ('队友 A', 'Mika', '队友 B')[i], tr(f'sample{i + 1}'), False) for i in range(3)], now=monotonic(), live=True)
+        self._sample = sample_timeline()
         self.render()
         self.poll = QTimer(self)
         self.poll.setInterval(5000)
@@ -139,11 +138,10 @@ class AppController(QObject):
             self.notice('settings_failed')
 
     def render(self):
-        preview = self.settings_window is not None and self.settings_window.isVisible()
-        timeline = self._sample if preview else self.timeline
-        state = replace(self.state, visible=True, status='', mode='passive') if preview else self.state
-        self.hud.render(state, timeline, self.destinations)
-        self.hud.setVisible(state.visible)
+        state = self.state
+        self.hud.render(state, self._sample if state.mode == 'adjust' else self.timeline, self.destinations)
+        settings_open = self.settings_window is not None and self.settings_window.isVisible()
+        self.hud.setVisible(state.visible and not settings_open)
         if self.wheel_hook:
             self.wheel_hook.set_enabled(state.mode != 'passive')
         self.tray.render(self.state)
@@ -181,11 +179,28 @@ class AppController(QObject):
                     win32.prepare_input_method(int(self.hud.winId()))
             if self.state.mode == 'picker':
                 self.list_channels()
+        elif kind == 'adjust':
+            self._return_window = win32.foreground_window()
+            if self.settings_window:
+                self.settings_window.hide()
+            self.state = replace(self.state, mode='adjust', visible=True)
+            self.render()
+            self.hud.raise_()
+            self.hud.activateWindow()
+            self.hud.messages.setFocus()
+            if os.name == 'nt':
+                win32.focus_window(int(self.hud.winId()), int(self.hud.winId()))
         elif kind in {'cancel', 'blur', 'toggle'}:
+            adjusting = self.state.mode == 'adjust'
             active = self.state.mode != 'passive'
             self.state = reduce(self.state, 'toggle' if kind == 'toggle' else 'cancel')
             if active and kind != 'blur':
                 self.restore_focus()
+            if adjusting and self.settings_window:
+                self.settings_window.show()
+                if kind != 'blur':
+                    self.settings_window.raise_()
+                    self.settings_window.activateWindow()
         elif kind == 'draft':
             self.state = reduce(self.state, 'draft', value)
         elif kind == 'send':
@@ -355,6 +370,7 @@ class AppController(QObject):
         if self.settings_window is None:
             self.settings_window = SettingsWindow(self.state.settings)
             self.settings_window.changed.connect(self.configure)
+            self.settings_window.edit_requested.connect(lambda: self.action('adjust'))
             self.settings_window.recording.connect(self.pause_hotkeys)
             self.settings_window.finished.connect(lambda _: self.render())
         self.settings_window.sync(self.state.settings)
