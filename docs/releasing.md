@@ -83,3 +83,11 @@
 - 两次验收失败均恢复了全部入口和旧清单，并从 HTTPS 确认 1.0.0：第一次为验证脚本未编码中文使用说明 URL；第二次为下载完成通知遮挡托盘，探针点不到退出菜单。修正 URL 编码并仅关闭 TypeSlip 通知后，从干净旧版状态重跑全链路通过；未修改发行包。
 - 备份位于服务器 `/app/state/archive/releases/oopz-tactical-overlay/backup-1.0.0-before-1.0.1-20261031/`；本机升级起点、日志、JSON 与截图在 `~/.rin/work/typeslip/release-101/`，报告为 `~/.rin/work/typeslip/release-101-report.md`。本轮 Mac 复跑 113 passed / 1 skipped（Windows DPAPI），Windows 测试任务、进程及应用锁已清理。
 - rinutm 仍仅 C: 可写，实际跨盘安装入口未验证；真实 Oopz 登录收发及干净 Windows 环境未验证，不计为通过。
+
+## 1.0.2 本地修复验收（未发布）
+
+- 基于 main `0e72f4be9` 的 `fix/1.0.2`：输入热键切换、空回车退出、IME组合保护、浮层导航、历史锚定（含80条淘汰和动画中来消息）、平滑及高分辨率滚轮、拖动滚动条和历史键盘导航；保留1.0已记录的交互改进。完整40项对照见 [交互审计](interaction-audit.md)。
+- 图标采用深色圆角底、-8°白纸折角、HUD强调色 #DCC49E；SVG源、16/20/24/32/48/64/128/256 PNG及8帧ICO保存在包内assets，`tools/build/render_icons.py` 可重建；exe、托盘和窗口共用这些导出。
+- Mac offscreen：140 passed / 1 skipped（Windows DPAPI）；rinutm原生桌面：141 passed。原生探针验证真实中文IME、全局热键、框外滚轮、焦点归还、频道键盘选择、Ctrl+滚轮与F9。实际exe验证三条退化、固定消息边界和滚动往返像素一致、版本与全部图标资源、托盘菜单退出及热键释放。32个构建输入哈希与Mac一致。
+- 本地交付包38,811,648字节，SHA-256 `1a13f577fb4f9ad1925172ad11908a9a09d199d6749758cde5bbb3b4b3798f40`。exe、日志及结果在 `~/.rin/work/typeslip/fix-102/`，截图在 `shots-102/`，报告 `fix-102-report.md`；未推送、未发布，不计为公网升级验收。
+- 托盘探针初版没有记录首次点击命中，是否误点底层窗口无法确认；后续查明测试生成的纸条通知遮挡图标，已加入真实可见性/命中校验、仅关闭纸条通知及包含分层窗口的截图，见审计附录隔离记录。没有检查或补偿QMT状态。原生聊天是夹具，exe滚动用自带调整样例，真实Oopz/游戏和干净Windows未验收。

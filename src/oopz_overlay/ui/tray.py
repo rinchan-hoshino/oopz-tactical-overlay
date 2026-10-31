@@ -1,39 +1,17 @@
-from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QIcon, QPixmap, QPainter, QColor, QPainterPath, QPen
+from pathlib import Path
+from PySide6.QtCore import Signal
+from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QSystemTrayIcon, QMenu
 from ..i18n import tr
-ACCENT = '#657247'
+
 
 def app_icon() -> QIcon:
-    """One vector drawing for the window, tray and packaged application."""
-    pixmap = QPixmap(256, 256)
-    pixmap.fill(Qt.GlobalColor.transparent)
-    painter = QPainter(pixmap)
-    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-    painter.setPen(Qt.PenStyle.NoPen)
-    painter.setBrush(QColor(ACCENT))
-    painter.drawRoundedRect(8, 8, 240, 240, 58, 58)
-    paper = QPainterPath()
-    paper.moveTo(69, 49)
-    paper.lineTo(147, 49)
-    paper.lineTo(189, 91)
-    paper.lineTo(189, 207)
-    paper.lineTo(69, 207)
-    paper.closeSubpath()
-    painter.setBrush(QColor('#f4f5e9'))
-    painter.drawPath(paper)
-    fold = QPainterPath()
-    fold.moveTo(147, 49)
-    fold.lineTo(147, 91)
-    fold.lineTo(189, 91)
-    fold.closeSubpath()
-    painter.setBrush(QColor('#cbd3b4'))
-    painter.drawPath(fold)
-    painter.setPen(QPen(QColor(ACCENT), 8, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
-    painter.drawLine(93, 127, 163, 127)
-    painter.drawLine(93, 154, 145, 154)
-    painter.end()
-    return QIcon(pixmap)
+    """The same SVG exports supply native-size window, tray and exe icons."""
+    assets = Path(__file__).resolve().parents[1] / 'assets'
+    icon = QIcon()
+    for size in (16, 20, 24, 32, 48, 64, 128, 256):
+        icon.addFile(str(assets / f'icon-{size}.png'))
+    return icon
 
 class Tray(QSystemTrayIcon):
     toggle = Signal()

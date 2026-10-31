@@ -160,6 +160,7 @@ class AppController(QObject):
             return
         if kind == 'activate':
             if self.state.mode != 'passive':
+                self.action('cancel')
                 return
             if self.settings_window:
                 self.settings_window.hide()

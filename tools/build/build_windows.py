@@ -3,7 +3,6 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
-import os
 import shutil
 import subprocess
 import sys
@@ -11,9 +10,6 @@ import tomllib
 from datetime import UTC, datetime
 from pathlib import Path
 
-from oopz_overlay.ui.tray import app_icon
-from oopz_overlay.i18n import tr
-APP_NAME = tr("app")
 
 ROOT = Path(__file__).resolve().parents[2]
 PRODUCT = "OopzTacticalOverlay"
@@ -37,14 +33,7 @@ def main() -> None:
             shutil.rmtree(directory, ignore_errors=True)
     dist.mkdir(parents=True, exist_ok=True)
     build.mkdir(parents=True, exist_ok=True)
-    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-    from PySide6.QtWidgets import QApplication
-
-    application = QApplication.instance() or QApplication([])
-    application.setApplicationName(APP_NAME)
-    icon_path = build / "zhitiao.ico"
-    if not app_icon().pixmap(256, 256).save(str(icon_path), "ICO"):
-        raise RuntimeError("Could not render the application icon")
+    icon_path = ROOT / 'src' / 'oopz_overlay' / 'assets' / 'icon.ico'
 
     subprocess.run(
         [
@@ -72,6 +61,7 @@ def main() -> None:
             # browser login/voice runtime and test fixtures are not used here.
             "--nofollow-import-to=oopz_sdk.testing,playwright,pytest",
             "--include-package-data=certifi",
+            "--include-package-data=oopz_overlay",
             f"--report={build / 'compilation-report.xml'}",
             str(ROOT / "tools" / "build" / "windows_entry.py"),
         ],

@@ -57,6 +57,7 @@ def test_scroll_and_ctrl_wheel(hud,qapp):
     events=[]; hud.action.connect(lambda *args: events.append(args))
     qapp.processEvents()
     hud.handle_wheel(120,False)
+    QTest.qWait(180)
     assert hud.messages.offset > 0 and hud.latest.isVisible()
     hud.handle_wheel(120,True)
     assert events[-1] == ('font_size',13)
