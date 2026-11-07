@@ -100,3 +100,14 @@
 - 1.0.1 实际 DPAPI 设置存储及 UI 保存生成 schema 10 样例；升级后频道、显示器、位置、尺寸、字号、文字72%/暗角38%、持续显示关闭、Windows Notify.wav、Ctrl+F8/Alt+F9 逐字段不变。输入热键可用，正常退出后两个热键均可重新注册。升级后的设置、任务栏和托盘图标截图均已人工核对，新图标生效。
 - 发布前探针的菜单按键和首轮坐标点击未能完成退出，另有重复创建隔离目录错误；当时公网尚未变更。坐标点击前已核验实际命中纸条 PID；最终改为向纸条自己的 Qt 托盘窗口发送菜单消息，再对已核验 PID 的退出项执行 UIA Invoke，干净重跑通过。发布及升级阶段无失败、无需回滚；未操作 QMT 进程或窗口，本轮测试进程和计划任务已清理。
 - 服务器备份：`/app/state/archive/releases/oopz-tactical-overlay/backup-1.0.1-before-1.0.2-20261031/`。本机报告 `~/.rin/work/typeslip/release-102-report.md`；升级起点、探针、结果与截图在 `release-102/`。本轮 Mac 全量 140 passed / 1 skipped（Windows DPAPI）；沿用本地已验收 Windows 原生 141 passed。实际跨盘安装、真实 Oopz 登录收发、真实游戏及干净 Windows 环境本轮未验证。
+
+
+## 1.0.3 内存修复与公网发行（2026-11-07）
+
+- main 合入 `3388e20`：HUD 重绘产生的临时 QTextDocument 归属源文档并随其释放，消息去重集合随最近 80 条历史淘汰；更新记录见 [CHANGELOG](../CHANGELOG.md)。既有修前/修后各 30 分钟源码验证见 `~/.rin/work/typeslip/memleak-20261107/`。
+- 沿用 1.0.2 的 rinutm 构建与 archive 发布方式：32 个构建输入哈希与 Mac 一致；Mac offscreen 142 passed / 1 skipped（Windows DPAPI），rinutm 原生 143 passed。发行包 38,810,624 字节，SHA-256 `be26c81dafd8e923c29de865aa5de92c840c3c8c613518ede8176e87d417319d`。
+- 公开目录外备份六个旧入口文件并逐一校验，发布不可变版本目录，三个 exe 入口、SHA256SUMS 和说明原子替换，latest.json 最后替换；公共 HTTPS 重下载版本包及三个入口，大小和 SHA-256 均一致。发布时间 `2026-11-07T11:07:25.023189+00:00`；未重启 archive 服务。
+- 仅在 rinutm、隔离 LOCALAPPDATA，用公网原始 1.0.2 exe 验证真实更新入口：自动下载与待更新记录校验、运行中保持旧文件、正常退出、重启后旧助手替换并启动 1.0.3.0、助手退出码 0、缓存/待更新记录/助手/同盘暂存清理通过，无 update-error.json；schema 10 设置逐字段保留，输入热键可用，正常退出后 Ctrl+F8 / Alt+F9 均能重新注册。
+- 同一发行 exe（哈希同上）在 rinutm 原生桌面挂 20 分钟，每秒 2 条，共 2400 条相同文字/图片/表情占位消息；0 / 10 / 20 分钟私有内存为 **204.7 / 229.3 / 229.2 MiB**，历史与去重均不超过 80。通过 Frida 向未修改的发行进程注入外部消息夹具及采样器，内存包含测试工具开销；未替换 HUD/Timeline 实现。逐分钟原始数据、截图、测试工具和升级证据在 `~/.rin/work/typeslip/release-103/`。
+- 发布前修正测试注入脚本括号错误，并用旧版 exe 短测确认工具可用；此时线上仍为 1.0.2。未操作主人电脑。实际跨盘安装、真实 Oopz/游戏及干净 Windows 未验证。
+- 服务器回滚备份：`/app/state/archive/releases/oopz-tactical-overlay/backup-1.0.2-before-1.0.3-20261107/`；本轮 Windows 测试进程和计划任务已清理。
