@@ -42,7 +42,9 @@ class Timeline:
                     notify.append(key)
             self._messages[key] = message
         self._messages = {m.message_id: m for m in self.items[-self.limit:]}
+        self._seen.intersection_update(self._messages)
         self._arrivals = {k: t for k, t in self._arrivals.items() if k in self._messages}
+        notify = [key for key in notify if key in self._messages]
         if not reading:
             self.unread += len(notify)
         return tuple(notify)
