@@ -264,3 +264,26 @@ def test_nonpersistent_messages_and_their_background_fade_together(qapp, monkeyp
     qapp.processEvents()
     assert alpha() >= fresh
     h.close()
+
+
+def test_repainting_releases_temporary_outline_documents(hud, qapp, monkeypatch):
+    from PySide6.QtGui import QTextDocument
+    clones = []
+    destroyed = []
+    clone = QTextDocument.clone
+
+    def track_clone(document, *args):
+        shadow = clone(document, *args)
+        clones.append(1)
+        shadow.destroyed.connect(lambda: destroyed.append(1))
+        return shadow
+
+    monkeypatch.setattr(QTextDocument, 'clone', track_clone)
+    timeline = Timeline()
+    timeline.merge([ChatMessage('m', 1, 'a', 'Alice', '楼梯有人 🙂', False)],
+                   now=0, live=False)
+    hud.render(AppState(settings=AppSettings(channel_id='c')), timeline, ())
+    for _ in range(12):
+        hud.messages.grab()
+    assert clones
+    assert destroyed == clones

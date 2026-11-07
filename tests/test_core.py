@@ -161,3 +161,20 @@ def test_connection_readiness_requires_account_and_destination():
     s=AppSettings(person_uid='p',jwt_token='t',device_id='d')
     assert s.has_credentials and not s.is_ready
     assert replace(s,area_id='a',channel_id='c').is_ready
+
+
+def test_timeline_discards_evicted_ids_without_renotifying_old_replays():
+    from oopz_overlay.core.timeline import ChatMessage, Timeline
+    timeline = Timeline(limit=3)
+    for i in range(20):
+        timeline.merge([ChatMessage(str(i), i, 'a', 'Alice', str(i), False)],
+                       now=i, live=True)
+    assert [m.message_id for m in timeline.items] == ['17', '18', '19']
+    assert len(timeline._seen) <= 3
+    assert len(timeline._arrivals) <= 3
+    assert not timeline.merge([ChatMessage('0', 0, 'a', 'Alice', 'old', False)],
+                              now=30, live=True)
+    assert [m.message_id for m in timeline.items] == ['17', '18', '19']
+    assert not timeline.merge([ChatMessage('19', 19, 'a', 'Alice', 'edited', False)],
+                              now=31, live=True)
+    assert timeline.items[-1].text == 'edited'

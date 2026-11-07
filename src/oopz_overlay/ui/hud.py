@@ -117,7 +117,7 @@ class Messages(QWidget):
                 painter.save()
                 painter.translate(6, y + 3)
                 opacity = self.state.settings.opacity[1] / 100
-                shadow = doc.clone()
+                shadow = doc.clone(doc)
                 cursor = QTextCursor(shadow)
                 cursor.select(QTextCursor.SelectionType.Document)
                 shade = QTextCharFormat()
