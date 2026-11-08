@@ -155,3 +155,64 @@ def test_f9_exits_input_restores_focus_and_preserves_draft(controller, monkeypat
     assert c.state.draft == 'keep' and restored == [900]
     c.action('toggle')
     assert c.hud.isVisible() and c.state.mode == 'passive'
+
+
+def test_incoming_burst_bounds_retained_messages_before_gui_catches_up(controller):
+    import gc
+    import weakref
+    from oopz_overlay.core.timeline import ChatMessage
+
+    class TrackedMessage(ChatMessage):
+        pass
+
+    c = controller
+    c.poll.stop(); c.startup.stop(); c.update_timer.stop()
+    retained = []
+
+    def produce():
+        for i in range(1000):
+            message = TrackedMessage(str(i), i, 'u', 'Alice', 'long body ' + str(i), False)
+            retained.append(weakref.ref(message))
+            c.gateway.callbacks.event(GatewayEvent(0, 'live_timeline', ([message],)))
+
+    import threading
+    worker = threading.Thread(target=produce)
+    worker.start(); worker.join(timeout=3)
+    assert not worker.is_alive()
+    gc.collect()
+    assert sum(ref() is not None for ref in retained) <= 80
+    c.application.processEvents()
+    c.application.processEvents()
+    assert [m.message_id for m in c.timeline.items] == [str(i) for i in range(920, 1000)]
+
+
+def test_batched_history_live_and_stale_messages_keep_generation_and_notifications(controller, monkeypatch):
+    from oopz_overlay.core.timeline import ChatMessage
+    c = controller
+    c.poll.stop(); c.startup.stop(); c.update_timer.stop()
+    c.state = replace(c.state, generation=2)
+    sounds = []
+    monkeypatch.setattr(module.win32, 'play_sound', sounds.append)
+    for generation, kind, message_id in [(1, 'live_timeline', 'stale'),
+                                         (2, 'timeline', 'history'),
+                                         (2, 'live_timeline', 'live')]:
+        c.gateway.callbacks.event(GatewayEvent(generation, kind, ([
+            ChatMessage(message_id, generation, 'u', 'Alice', message_id, False)],)))
+    c.application.processEvents(); c.application.processEvents()
+    assert {m.message_id for m in c.timeline.items} == {'history', 'live'}
+    assert c.timeline.unread == 1
+    assert len(sounds) == 1
+
+
+def test_delayed_history_cannot_evict_newer_live_messages_from_pending_batch(controller):
+    from oopz_overlay.core.timeline import ChatMessage
+    c = controller
+    c.poll.stop(); c.startup.stop(); c.update_timer.stop()
+    post = c.gateway.callbacks.event
+    post(GatewayEvent(0, 'live_timeline', ([ChatMessage('new', 1000, 'u', 'Alice', 'new', False)],)))
+    post(GatewayEvent(0, 'timeline', ([ChatMessage(str(i), i, 'u', 'Alice', 'old', False)
+                                      for i in range(80)],)))
+    c.application.processEvents(); c.application.processEvents()
+    assert len(c.timeline.items) == 80
+    assert c.timeline.items[-1].message_id == 'new'
+    assert c.timeline.unread == 1

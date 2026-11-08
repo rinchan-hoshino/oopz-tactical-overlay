@@ -375,6 +375,7 @@ class GatewayRuntime:
         async def on_open() -> None:
             if generation != self._generation:
                 return
+            await self._cancel_history()
             await ws.send_subscribe_area_events([settings.area_id])
             if generation != self._generation:
                 return
@@ -437,6 +438,8 @@ class GatewayRuntime:
         try:
             users = await rest.person.get_person_infos_batch(sorted(missing))
             names.update({user.uid: user.name for user in users if user.name})
+            while len(names) > 256:
+                del names[next(iter(names))]
         except Exception as exc:
             # A message remains usable with its short UID if profile lookup fails.
             LOGGER.debug("Oopz person name lookup failed", exc_info=exc)
@@ -499,14 +502,17 @@ class GatewayRuntime:
             channel=self._settings.channel_id,
         )
 
-    async def _disconnect(self) -> None:
-        self._ready = False
+    async def _cancel_history(self) -> None:
         tasks = tuple(self._history_tasks)
         for task in tasks:
             task.cancel()
         if tasks:
             await asyncio.gather(*tasks, return_exceptions=True)
         self._history_tasks.clear()
+
+    async def _disconnect(self) -> None:
+        self._ready = False
+        await self._cancel_history()
         if self._ws is not None:
             try:
                 await asyncio.wait_for(self._ws.stop(), timeout=3)
@@ -591,7 +597,7 @@ def _text(source: Any) -> str:
     if attachment_types:
         return tr("[文件]")
 
-    message_type = str(getattr(source, "type", "") or "").upper()
+    message_type = str(getattr(source, "message_type", "") or getattr(source, "type", "") or "").upper()
     if message_type == "STICKER":
         return tr("[表情]")
     if message_type == "IMAGE":

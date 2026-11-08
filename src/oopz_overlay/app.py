@@ -4,6 +4,7 @@ import os
 import sys
 import threading
 from dataclasses import replace
+from itertools import groupby
 from pathlib import Path
 from time import monotonic
 from PySide6.QtCore import QObject, Signal, QTimer, QLockFile, Qt
@@ -14,7 +15,7 @@ from . import __version__
 from .core.settings import AppSettings, JsonSettingsStore
 from .core.state import AppState, reduce
 from .core.timeline import Timeline
-from .adapters.oopz import GatewayRuntime, GatewayCallbacks
+from .adapters.oopz import GatewayRuntime, GatewayCallbacks, GatewayEvent
 from .adapters.session import WindowsDpapiProtector
 from .adapters import win32, updater
 from .ui.hud import Hud, sample_timeline
@@ -69,6 +70,40 @@ class Bridge(QObject):
     update = Signal(object)
     wheel = Signal(int, bool)
     input_error = Signal(str)
+    messages_ready = Signal()
+
+    def __init__(self):
+        super().__init__()
+        self._messages = {}
+        self._messages_lock = threading.Lock()
+        self._messages_scheduled = False
+        self.messages_ready.connect(self.flush_messages, Qt.ConnectionType.QueuedConnection)
+
+    def post_gateway(self, event):
+        if event.kind not in {'timeline', 'live_timeline'}:
+            self.gateway.emit(event)
+            return
+        with self._messages_lock:
+            # Bound payloads before Qt's unbounded cross-thread event queue.
+            for message in event.values[0]:
+                key = (event.generation, message.message_id)
+                previous = self._messages.get(key)
+                self._messages[key] = (event.generation, previous[1] if previous else event.kind, message)
+            if len(self._messages) > 80:
+                self._messages = dict(sorted(self._messages.items(), key=lambda item:
+                    (item[0][0], item[1][2].timestamp_us, item[0][1]))[-80:])
+            if self._messages_scheduled:
+                return
+            self._messages_scheduled = True
+        self.messages_ready.emit()
+
+    def flush_messages(self):
+        with self._messages_lock:
+            messages = tuple(self._messages.values())
+            self._messages.clear()
+            self._messages_scheduled = False
+        for (generation, kind), batch in groupby(messages, key=lambda item: item[:2]):
+            self.gateway.emit(GatewayEvent(generation, kind, ([item[2] for item in batch],)))
 
 class AppController(QObject):
 
@@ -102,7 +137,7 @@ class AppController(QObject):
         self.bridge.wheel.connect(self.wheel, Qt.ConnectionType.QueuedConnection)
         self.bridge.input_error.connect(lambda _: self.notice('focus_failed'), Qt.ConnectionType.QueuedConnection)
         noop = lambda *args: None
-        self.gateway = GatewayRuntime(GatewayCallbacks(noop, noop, noop, noop, noop, event=self.bridge.gateway.emit))
+        self.gateway = GatewayRuntime(GatewayCallbacks(noop, noop, noop, noop, noop, event=self.bridge.post_gateway))
         self.hud = Hud()
         self.hud.action.connect(self.action)
         self.hotkeys = None

@@ -98,3 +98,11 @@ def test_mapping_accepts_the_pinned_sdk_message_model() -> None:
     assert mapped.timestamp_us == 1_775_000_000_000_000
     assert mapped.sender_name == "队友"
     assert mapped.text == "楼梯有人"
+
+
+def test_pinned_sdk_sticker_and_image_types_have_readable_placeholders() -> None:
+    for kind, expected in [('STICKER', '[表情]'), ('IMAGE', '[图片]')]:
+        message = Message.model_validate({'messageId': kind, 'timestamp': '1',
+                                         'person': 'u', 'area': 'a', 'channel': 'c',
+                                         'type': kind, 'content': ''})
+        assert map_message(message, names={}, own_uid='me').text == expected

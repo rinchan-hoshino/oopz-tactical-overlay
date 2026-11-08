@@ -179,3 +179,19 @@ def test_rejected_message_preserves_draft_and_destination_without_retrying(trans
     )
     assert len(state.sent) == 1
     assert runtime._ready
+
+
+def test_reconnect_cancels_previous_pending_history_before_backfill(transport):
+    runtime, settings, state, events = transport
+    runtime.connect(replace(settings, channel_id='slow'))
+    assert state.slow_started.wait(2)
+
+    async def reopen():
+        await state.sockets[-1].callbacks['on_open']()
+        await asyncio.sleep(0)
+        return len([task for task in runtime._history_tasks if not task.done()])
+
+    active = asyncio.run_coroutine_threadsafe(reopen(), runtime._loop).result(2)
+    assert active == 1
+    assert state.slow_cancelled.is_set()
+    assert runtime._ready
