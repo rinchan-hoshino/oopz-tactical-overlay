@@ -59,3 +59,15 @@ def test_sender_cache_evicts_old_profiles_and_reuses_recent_ones() -> None:
         assert runtime._rest.person.calls[-1] == ['u0']
 
     asyncio.run(visit())
+
+
+def test_resolving_new_profiles_keeps_cached_senders_from_the_same_batch() -> None:
+    from oopz_overlay.adapters.oopz import map_message
+    runtime = object.__new__(GatewayRuntime)
+    runtime._rest = FakeRest()
+    runtime._names = {f'u{i}': f'name-u{i}' for i in range(256)}
+    current = [SimpleNamespace(sender_id='u0', message_id='old', timestamp='1', plain_text='old'),
+               SimpleNamespace(sender_id='new', message_id='new', timestamp='2', plain_text='new')]
+    asyncio.run(runtime._resolve_names(current))
+    assert [map_message(m, names=runtime._names, own_uid='me').sender_name for m in current] == ['name-u0', 'name-new']
+    assert len(runtime._names) <= 256

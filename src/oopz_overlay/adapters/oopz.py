@@ -428,11 +428,10 @@ class GatewayRuntime:
         names = self._names if names is None else names
         if rest is None:
             return
-        missing = (
-            {str(getattr(message, "sender_id", "") or "") for message in messages}
-            - names.keys()
-            - {""}
-        )
+        senders = {str(getattr(message, "sender_id", "") or "") for message in messages}
+        for uid in senders & names.keys():
+            names[uid] = names.pop(uid)
+        missing = senders - names.keys() - {""}
         if not missing:
             return
         try:
